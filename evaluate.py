@@ -1,0 +1,1 @@
+#this file will be used to evaluate the performance of the neural network by running test trading data.
