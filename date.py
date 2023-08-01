@@ -1,4 +1,6 @@
 from datetime import datetime,timedelta
+import json
+import pandas as pd
 
 def get_recent_trading_day():
     # Get the current date
@@ -14,23 +16,19 @@ def get_recent_trading_day():
 
     return trading_day
 
-def get_trading_day_5_years_ago():
-    # Get the current date
-    current_date = datetime.now()
 
-    # Subtract 5 years from the current date
-    five_years_ago = current_date - timedelta(days=365 * 5)
+#this function returns the min and max dates in a file containing json data
+def get_json_date_extrema(file_path):
+    with open(file_path,'r') as file:
+        json_string = file.read()
+    df = pd.read_json(json_string)
+    start_date = min(df['date'])
+    end_date = max(df['date'])
+    arr = [start_date,end_date]
+    return arr
 
-    # Keep subtracting one day until we find a trading day (exclude weekends and holidays)
-    while True:
-        if five_years_ago.weekday() >= 5:  # 5 and 6 correspond to Saturday and Sunday
-            five_years_ago -= timedelta(days=1)
-        else:
-            trading_day = five_years_ago
-            break
 
-    return trading_day
-
-# Get the most recent trading day and the trading day 5 years ago
-start_date = get_recent_trading_day()
-end_date = get_trading_day_5_years_ago()
+def datetime_forward_fill(df):
+    #this function takes in a pandas data frame and fills in all missing daily values by taking the most recent value
+    if not 'Date' in df.columns:
+        return print("Error: must have 'Date' column in dataframe")
