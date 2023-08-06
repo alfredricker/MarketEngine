@@ -9,6 +9,16 @@ With a combination of AlphaVantage and Nasdaq Data Link I can probably write a n
 #7-28-23
 Use postman for debuggin and web scraping
 
+#8-1-23
+api.explodingtopics.com looks like it will be a very useful api (if it turns out to be free and functional)
+
+I think that web scarping the popularity and sentiment of a given company at a given time should be the crux of the model
+
+#8-3-23
+For EPS data, I am using alphavantage and am including a counter of the number of weeks since the release of the data (because this might be relevant to price hype and what not)
+
+#8-4-23
+IMPORTANT: since I want to look at how the present day data effects the closing price of tomorrow, I have to copy the close column, and shift it down 1 position in a new row
 
 ##HOW TO CREATE THE MODEL
 Data Preprocessing: Clean and preprocess your data thoroughly. Handle missing values, scale the features appropriately, and consider normalization or standardization to make optimization easier for the neural network.

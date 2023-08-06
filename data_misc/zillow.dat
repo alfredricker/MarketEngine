@@ -1,1 +1,0 @@
-{"datatable": {"data": [], "columns": [{"name": "indicator_id", "type": "text"}, {"name": "region_id", "type": "text"}, {"name": "date", "type": "Date"}, {"name": "value", "type": "double"}]}, "meta": {"next_cursor_id": null}}
