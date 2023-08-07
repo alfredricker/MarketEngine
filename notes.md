@@ -20,6 +20,9 @@ For EPS data, I am using alphavantage and am including a counter of the number o
 #8-4-23
 IMPORTANT: since I want to look at how the present day data effects the closing price of tomorrow, I have to copy the close column, and shift it down 1 position in a new row
 
+#8-5-23
+Ok, I got a trial model working properly, which is great. It also fits the data nicely, however, I was unsuccessful with producing a win rate that is consistently higher than that of just holding the stock. I need to try various loss functions and model parameters until I get something decent.
+
 ##HOW TO CREATE THE MODEL
 Data Preprocessing: Clean and preprocess your data thoroughly. Handle missing values, scale the features appropriately, and consider normalization or standardization to make optimization easier for the neural network.
 

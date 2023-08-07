@@ -70,7 +70,7 @@ aapl_df = fn.concatenate_data(aapl_list)
 aapl_df['Close_Tmr'] = aapl_df['Close'].shift(-1)
 aapl_df = aapl_df.drop(index=aapl_df.index[-1]) #drop the last row because the above shift method will result in NaN values
 aapl_df.set_index('Date',inplace=True)
-print(aapl_df)
+#print(aapl_df)
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu' #run this program on the gpu if it is available
 
@@ -78,12 +78,16 @@ aapl_np = aapl_df.to_numpy()
 
 #verify that this scaling is appropriate
 from sklearn.preprocessing import MinMaxScaler
-scaler = MinMaxScaler(feature_range=(-1,1))
-aapl_np = scaler.fit_transform(aapl_np)
+#IMPORTANT: should create two different scalers to avoid data leakage
+scaler_X = MinMaxScaler(feature_range=(-1,1))
+scaler_Y = MinMaxScaler(feature_range=(-1,1))
+#aapl_np = scaler.fit_transform(aapl_np)
 
 #close_tmr is the value we want to predict and it is the last column of the dataframe
 X = aapl_np[:,:-1]
 Y = aapl_np[:,-1]
+X = scaler_X.fit_transform(X)
+Y = scaler_Y.fit_transform(Y.copy().reshape(-1,1))
 split_index = int(len(X)*0.9) # I will use 90% of the data as training
 X_train = X[:split_index]
 X_test = X[split_index:]
@@ -124,7 +128,7 @@ test_loader = DataLoader(train_dataset,batch_size=batch_size,shuffle=False)
 for _,batch in enumerate(train_loader):
     x_batch = batch[0].to(device)
     y_batch = batch[1].to(device)
-    print(x_batch.shape,y_batch.shape)
+    #print(x_batch.shape,y_batch.shape)
     break
 
 class LSTM(torch.nn.Module):
@@ -168,12 +172,36 @@ class AccuracyCrossEntropyLoss(torch.nn.Module):
 
         return loss
 
+#includes a penalty for getting the sign wrong    
+class MSELossWithPenalty(torch.nn.Module):
+    def __init__(self, penalty_factor):
+        super(MSELossWithPenalty, self).__init__()
+        self.penalty_factor = penalty_factor
+
+    def forward(self, predictions, targets):
+        # Calculate the mean squared error (MSE) loss
+        mse_loss = torch.nn.MSELoss()(predictions, targets)
+
+        # Apply the penalty for incorrect sign predictions
+        prediction_signs = torch.sign(predictions)
+        target_signs = torch.sign(targets)
+        
+        incorrect_signs = torch.zeros_like(prediction_signs)
+        for i in range(len(prediction_signs)):
+            if prediction_signs[i] != target_signs[i]:
+                incorrect_signs[i] = 1.0
+        sign_penalty = torch.mean(incorrect_signs)
+        # Combine the MSE loss and the penalty with the given factor
+        total_loss = mse_loss + self.penalty_factor * sign_penalty
+        return total_loss
+
 # Assuming you have defined your neural network as 'model'
 # and you have your training data and targets as 'train_data' and 'train_targets', respectively.
 
 #loss_function = AccuracyCrossEntropyLoss()
-loss_function = torch.nn.MSELoss()
-learning_rate = 0.00005
+sign_penalty = 1.0
+loss_function = MSELossWithPenalty(sign_penalty)
+learning_rate = 0.00005 #this worked way better than 0.0001
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 num_epochs = 10
 
@@ -186,7 +214,7 @@ def train_one_epoch():
         x_batch,y_batch = batch[0].to(device),batch[1].to(device)
         output = model(x_batch)
         loss = loss_function(output,y_batch)
-        running_loss += loss.item()
+        running_loss += loss#.item()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -203,7 +231,7 @@ def validate_one_epoch():
         with torch.no_grad():
             output = model(x_batch)
             loss = loss_function(output,y_batch)        
-            running_loss+=loss.item()
+            running_loss+=loss#.item()
     avg_loss_across_batches = running_loss / len(test_loader)          
     print('Val loss: {0:.3f}'.format(avg_loss_across_batches))
     print('--------------------------------------')
@@ -211,3 +239,37 @@ def validate_one_epoch():
 for epoch in range(num_epochs):
     train_one_epoch()
     validate_one_epoch()
+
+#get the numpy array of the predicted values
+with torch.no_grad():
+    predicted = model(X_train.to(device)).to('cpu').numpy()
+    predicted_test = model(X_test.to(device)).to('cpu').numpy()
+
+X_test_orig_shape = X_test.reshape(-1,size-1)
+X_train_orig_shape = X_train.reshape(-1,size-1)
+X_test_original = scaler_X.inverse_transform(X_test_orig_shape)
+X_train_original = scaler_X.inverse_transform(X_train_orig_shape)
+Y_train_original = scaler_Y.inverse_transform(Y_train)
+Y_test_original = scaler_Y.inverse_transform(Y_test).flatten()
+
+test_predictions = scaler_Y.inverse_transform(predicted_test).flatten()
+
+#see how many times it correctly guesses the sign
+ones_test = torch.ones_like(torch.tensor(Y_test_original.copy()))
+hold_perform = 0
+Y_test_sign = torch.sign(torch.tensor(Y_test_original.copy()))
+predictions_sign = torch.sign(torch.tensor(test_predictions.copy()))
+model_perform = 0
+for i in range(len(Y_test_original)):
+    if predictions_sign[i] == Y_test_sign[i]:
+        model_perform+=1
+    if ones_test[i] == Y_test_sign[i]:
+        hold_perform+=1
+print(f'Model performance: {model_perform} \nHold performance: {hold_perform}')
+
+data = {
+    'Actual': Y_test_original,
+    'Predicted': test_predictions
+}
+df_comparison = pd.DataFrame(data)
+df_comparison.to_csv('AAPL_comparison.csv')
