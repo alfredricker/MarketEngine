@@ -151,28 +151,9 @@ model = LSTM(1,4,2)
 model.to(device)
 
 #I want accuracy based loss instead of MSE
-class AccuracyCrossEntropyLoss(torch.nn.Module):
-    def __init__(self, accuracy_weight=1.0, cross_entropy_weight=1.0):
-        super(AccuracyCrossEntropyLoss, self).__init__()
-        self.accuracy_weight = accuracy_weight
-        self.cross_entropy_weight = cross_entropy_weight
-        self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
 
-    def forward(self, predictions, targets):
-        # Calculate the accuracy
-        predicted_labels = torch.argmax(predictions, dim=1)
-        correct_predictions = torch.eq(predicted_labels, targets).sum().item()
-        accuracy = correct_predictions / targets.size(0)
 
-        # Calculate cross-entropy loss
-        cross_entropy_loss = self.cross_entropy_loss(predictions, targets)
-
-        # Combine the losses with weights
-        loss = self.accuracy_weight * (1.0 - accuracy) + self.cross_entropy_weight * cross_entropy_loss
-
-        return loss
-
-#includes a penalty for getting the sign wrong    
+#includes a penalty for getting the sign wrong. this loss function doesn't seem to work properly for high penalties  
 class MSELossWithPenalty(torch.nn.Module):
     def __init__(self, penalty_factor):
         super(MSELossWithPenalty, self).__init__()
