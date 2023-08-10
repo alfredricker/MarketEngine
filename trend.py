@@ -60,4 +60,5 @@ n = 10
 #reduce the list to the tickers with the n highest volume
 company_list = [s for s in df_sorted.head(n)['Name']]
 #print(company_list)
-#get_search_trend_data('TUP')
+get_search_trend_data('Microsoft')
+get_search_trend_data('AT&T')

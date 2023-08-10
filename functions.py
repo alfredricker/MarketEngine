@@ -1,6 +1,13 @@
 from datetime import datetime,timedelta
 import json
 import pandas as pd
+import numpy as np
+import re
+
+#this condition will be checked within several functions... nevermind I was recently made aware of df.fillna()
+def contains_non_numeric(input_string):
+    pattern = r'^[0-9]*\.?[0-9]+$'
+    return not re.match(pattern, input_string)
 
 #changes the values column of a pandas data frame to be percentage instead of nominal
 #this function only works for updating one column
@@ -138,7 +145,7 @@ def percent_forward_fill(df):
             new_row = {'Date':inc_date}
             for column in df.columns[1:]:
                 new_row[column] = df_sorted[column].iloc[loc_index-1]
-
+                # Check for NaN and replace with 0
             df_new = pd.concat([df_new,pd.DataFrame([new_row])],ignore_index=True)
             currentdate = inc_date
     df_new = df_new.sort_values(by='Date')
@@ -196,7 +203,7 @@ def get_df_date_extrema(df_list):
 
 
 #properly reads and formats the pd dataframe, forward fills the data, and splits data into a [price,volume] data list
-def equity_formatter(symbol):
+def equity_formatter(symbol,nominal=False):
     with open(f'data_equity/{symbol}.dat','r') as file:
         d = file.read()
     j = json.loads(d)
@@ -209,9 +216,16 @@ def equity_formatter(symbol):
     volume_df = df[['Date','Volume']]
     volume_df = datetime_forward_fill(volume_df)
     price_df = df[['Date','Close']] #I just want close for the first trial of this. I will come back and do stuff with high and low data as well
-    price_df = percent_forward_fill(price_df)
+    if nominal == False:    
+        price_df = percent_forward_fill(price_df)
+    elif nominal == True:
+        price_df = datetime_forward_fill(price_df)
+    else:
+        print("Error in functions.py: Equity formatter error!")
+
     print(f'Successfully formatted {symbol} data')
     return [price_df,volume_df]
+
 
 
 #for now I'm just going to return dfs of the report date, reportedEPS(as percent change) and the report date, surprise value (with counter forward fills)
@@ -225,12 +239,14 @@ def earnings_formatter(symbol):
     df.rename(columns={'reportedDate':'Date'},inplace=True)
     reported_eps = df.iloc[1:,[1,2]]#doing 1: for rows because most recent has missing values
     surprise = df.iloc[1:,[1,4]]
-    reported_eps_p = df_percent_change(reported_eps,'reportedEPS')
-    reported_eps_fill = forward_fill_with_counter(reported_eps_p)
-    surprise_fill = forward_fill_with_counter(surprise)
-    return [reported_eps_fill,surprise_fill]
+    #reported_eps_p = df_percent_change(reported_eps,'reportedEPS')
+    #try absolute reported eps with no counter
+    reported_eps = datetime_forward_fill(reported_eps)
+    surprise_fill = datetime_forward_fill(surprise)
+    return [reported_eps,surprise_fill]
 
 
+#if nominal is true, the data will be returned in absolute values, otherwise it will be returned as percent values
 def fed_formatter(code,nominal):
     with open(f'data_fed/{code}.dat','r') as file:
         d = file.read()
@@ -245,6 +261,16 @@ def fed_formatter(code,nominal):
     print(f'Successfully formatted {code} data')
     return df_fill
 
+
+#
+def retail_sentiment_formatter(symbol):
+    with open(f'data_equity/{symbol}_retail_sentiment.dat','r') as file:
+        j = file.read()
+    df = pd.read_json(j)
+    df.rename(columns={'date':'Date'},inplace=True)
+    df = df[['Date','sentiment']]
+
+    return df
 
 #returns the (almost) proper df to start the neural network process
 def concatenate_data(df_list):
@@ -270,3 +296,55 @@ def concatenate_data(df_list):
             df_new = df.iloc[:,1:]
             result_df = pd.concat([result_df,df_new],axis=1)
     return result_df
+
+
+def remove_imbalances(df:pd.DataFrame,target_column:str):
+    # Get counts of positive and negative values in the target column
+    pos_count = df[target_column].gt(0).sum()
+    neg_count = df[target_column].le(0).sum()
+
+    # Calculate the number of rows to keep to achieve a balanced DataFrame
+    rows_to_keep = min(pos_count, neg_count)
+
+    # Separate positive and negative rows
+    pos_rows = df[df[target_column] > 0].sample(rows_to_keep, replace=True)
+    neg_rows = df[df[target_column] <= 0].sample(rows_to_keep, replace=True)
+
+    # Concatenate the balanced rows
+    df_balanced = pd.concat([pos_rows, neg_rows], ignore_index=True)
+
+    return df_balanced
+
+#this function transforms the daily return values to binary form (1 for positive and 0 for negative)
+def transform_to_binary(targets:np.ndarray[np.float32]):
+    binary_array = (targets>0).astype(int)
+    return binary_array
+
+def count_ones_and_zeros(array):
+    ones_count = np.count_nonzero(array==1)
+    zeros_count = np.count_nonzero(array==0)
+    return zeros_count,ones_count
+
+
+def calculate_rsi(symbol: str, period: int = 14):
+    def relative_strength(data):
+        delta = data.diff()
+        gain = delta.where(delta > 0, 0)
+        loss = -delta.where(delta < 0, 0)
+        
+        avg_gain = gain.rolling(window=period, min_periods=1).mean()
+        avg_loss = loss.rolling(window=period, min_periods=1).mean()
+        
+        rs = avg_gain / avg_loss
+        return rs
+    
+    equity_df = equity_formatter(symbol, nominal=True)[0]
+    equity_df['Close'] = pd.to_numeric(equity_df['Close'], errors='coerce')
+    equity_df.dropna(subset=['Close'], inplace=True)
+    
+    rs = relative_strength(equity_df['Close'])
+    rsi = 100 - (100 / (1 + rs))
+    
+    equity_df['RSI'] = rsi
+    rsi_df = equity_df.drop(columns=['Close'])  # Drop the 'Close' column
+    return rsi_df

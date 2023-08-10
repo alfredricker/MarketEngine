@@ -23,6 +23,14 @@ IMPORTANT: since I want to look at how the present day data effects the closing 
 #8-5-23
 Ok, I got a trial model working properly, which is great. It also fits the data nicely, however, I was unsuccessful with producing a win rate that is consistently higher than that of just holding the stock. I need to try various loss functions and model parameters until I get something decent.
 
+#8-6-23
+Try adding a "fully connected layer" beyond the layers of the LSTM network to further process the data and make better predictions.
+Also, apply BCEntropy loss function such that if there is a probability greater than say 0.6 or 0.75 that the stock is class 1 (long), then the model signals a buy
+and if it is probability greater than 0.6 or 0.75 that the stock is in class 0 (short), then the model signals a sell.
+You must transform the target data to binary [0,1]
+To address class imbalances make sure that the training data has an equal number of positive and negative days. This makes sure that the model won't simply find the 
+local minimum of guessing all positive days.
+
 ##HOW TO CREATE THE MODEL
 Data Preprocessing: Clean and preprocess your data thoroughly. Handle missing values, scale the features appropriately, and consider normalization or standardization to make optimization easier for the neural network.
 
