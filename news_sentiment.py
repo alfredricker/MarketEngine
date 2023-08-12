@@ -2,12 +2,32 @@
 from bs4 import BeautifulSoup
 import json
 import pandas as pd
-from datetime import datetime
+from datetime import datetime,timedelta
 import time
 from selenium import webdriver
 import re
 import requests
 
+#for the marketwatch function
+class IntervalDate:
+    def __init__(self, current_date, time_interval):
+        self.current_date = current_date
+        self.time_interval = time_interval
+        
+    def _get_formatted_date(self, date):
+        year = str(date.year)
+        month = str(date.month).zfill(2)
+        day = str(date.day).zfill(2)
+        return year,month,day
+    
+    def get_current_date(self):
+        return self._get_formatted_date(self.current_date)
+    
+    def get_next_date(self):
+        next_date = self.current_date + timedelta(days=self.time_interval)
+        return self._get_formatted_date(next_date)
+    
+#--------------------------------------------------------------------------------
 
 def get_bloomberg_data(symbol,max_page:int=30):
     df = {'Date':[],'Headline':[],'Summary':[]}
@@ -50,7 +70,6 @@ def get_bloomberg_data(symbol,max_page:int=30):
 
 #from requests_html import HTMLSession
 
-
 def get_reuters_data(company,max_offset:int=50):
     df = {'Date':[],'Headline':[],'Summary':[]}
 
@@ -90,54 +109,73 @@ def get_reuters_data(company,max_offset:int=50):
         file.write(data)
 
 
-#looks like I can only get data as far back as 2020... so I'm not going to use marketwatch
-def get_marketwatch_data(company,max_page:int=5000):
-    data = {'Date':[],'Headline':[]}
+#looks like I can only get data as far back as 2020... so I'm not going to use marketwatch. #time_interval is the gap between days that the api processes
+def get_marketwatch_data(company,start_date:datetime=datetime(2016,1,1),end_date:datetime=datetime(2023,5,1),time_interval:int = 1):
+    data = {'Date':[],'Headline':[],'Summary':[]}
+    indexer = 0
+    #iterate through 2 days at a time
+    current_date = start_date
 
-    for page in range(max_page):
-        url = f"https://www.marketwatch.com/search/moreHeadlines?q={company}&ts=0&partial=true&tab=All%20News&pageNumber={page}"
+    while current_date<=end_date:
+        current_year,current_month,current_day = IntervalDate(current_date,time_interval).get_current_date()
+        next_year,next_month,next_day = IntervalDate(current_date,time_interval).get_next_date()
+        
+        url = f"https://www.marketwatch.com/search?q={company}&ts=5&sd={current_month}%2F{current_day}%2F{current_year}&ed={next_month}%2F{next_day}%2F{next_year}&partial=true&tab=All%20News"
 
         payload = {}
         headers = {
         'authority': 'www.marketwatch.com',
         'accept': '*/*',
         'accept-language': 'en-US,en;q=0.9',
-        'cookie': 'optimizelyEndUserId=oeu1691638315857r0.7087681223582081; ccpaApplies=true; ccpaUUID=f1b52e2b-831e-4661-a601-26f45b9c22e3; ab_uuid=2bb6b0db-e60c-4a58-8c6f-1a7ffe71c69d; AMCVS_CB68E4BA55144CAA0A4C98A5%40AdobeOrg=1; _cls_v=71b4337b-4d2a-4857-8ab9-25e547a46069; _cls_s=cb9ce4cd-7044-42e8-b7e0-997bafce5259:0; _pcid=%7B%22browserId%22%3A%22ll4lrzf3xsz5befm%22%7D; cX_P=ll4lrzf3xsz5befm; usr_bkt=HY0f8Of9M1; _pctx=%7Bu%7DN4IgrgzgpgThIC4B2YA2qA05owMoBcBDfSREQpAeyRCwgEt8oBJAEzIE4AmHgZi4CsvAIwB2DqIAMADkHTRvEAF8gA; s_ecid=MCMID%7C07811295556865454993086478630926961519; AMCV_CB68E4BA55144CAA0A4C98A5%40AdobeOrg=1585540135%7CMCIDTS%7C19580%7CMCMID%7C07811295556865454993086478630926961519%7CMCAAMLH-1692243117%7C9%7CMCAAMB-1692243117%7CRKhpRz8krg2tLO6pguXWp5olkAcUniQYPHaMWWgdJ3xzPWQmdj0y%7CMCOPTOUT-1691645517s%7CNONE%7CMCAID%7CNONE%7CvVersion%7C4.4.0; s_cc=true; _uetsid=75870c20372e11eeb7e4b57f3021c061; _uetvid=758743f0372e11eeaf7773af3d00e586; _rdt_uuid=1691638317494.509efc6d-b206-4dad-ab21-fa1245ae3898; _gcl_aw=GCL.1691638318.CjwKCAjw8symBhAqEiwAaTA__Ory9tIPdbQkDnXN5UtbxHrw9yWDTdXcRgrZFKSNTkdxN0A8UQViuBoCVrgQAvD_BwE; _gcl_au=1.1.1194856486.1691638318; _parsely_session={%22sid%22:1%2C%22surl%22:%22https://store.marketwatch.com/shop/us/us/mwus24ns/?swg=true&trackingCode=aaqzhsyx&cid=MW_SCH_GOO_ACQ_NA&n2IKsaD9=n2IKsaD9&gad=1&gclid=CjwKCAjw8symBhAqEiwAaTA__Ory9tIPdbQkDnXN5UtbxHrw9yWDTdXcRgrZFKSNTkdxN0A8UQViuBoCVrgQAvD_BwE%22%2C%22sref%22:%22https://www.google.com/%22%2C%22sts%22:1691638317590%2C%22slts%22:0}; _parsely_visitor={%22id%22:%22pid=bf2e4b8d-4749-421a-840f-2d21ae71034b%22%2C%22session_count%22:1%2C%22last_session_ts%22:1691638317590}; cX_G=cx%3Aaay94xhyxbv11gicm2zvcbs06%3A118c0xph4rjn9; permutive-id=6c6c2bca-c05c-4138-88d6-6e1f360c4fc5; mw_loc=%7B%22Region%22%3A%22CA%22%2C%22Country%22%3A%22US%22%2C%22Continent%22%3A%22NA%22%2C%22ApplicablePrivacy%22%3A0%7D; gdprApplies=false; fullcss-home=site-60d04d1451.min.css; icons-loaded=true; pushly.user_puuid=KjxevIlduSipjWShxOsKVchz9Kkg0XwA; _lr_geo_location_state=CA; _lr_geo_location=US; sso_fired_at=1691638332775; letsGetMikey=enabled; dnsDisplayed=false; signedLspa=false; _pbjs_userid_consent_data=6683316680106290; _pubcid=264ea218-4b67-4419-bbe9-75518d56c802; _ncg_domain_id_=1a8cf395-3657-4492-be2f-7e6cb4e543a6.1.1691638334184.1754710334184; _ncg_sp_ses.f57d=*; _ncg_id_=be3e9db5-dba4-4a0e-8345-070478527d6b; ln_or=eyIzOTQyNDE3IjoiZCJ9; _fbp=fb.1.1691638335144.1497534032; _dj_sp_id=e5a66968-eecf-41a1-a2f3-f6bb63e46721; _ncg_g_id_=469a5be9-2474-419c-b308-0c37a76461fc.3.1691638334.1754710334184; _pcus=eyJ1c2VyU2VnbWVudHMiOm51bGx9; s_sq=djglobal%252Cdjwsj%3D%2526pid%253Dhttps%25253A%25252F%25252Fwww.marketwatch.com%25252F%2526oid%253D%25250A%252520%252520%252520%252520%252520%252520%2526oidt%253D3%2526ot%253DSUBMIT; fullcss-quote=quote-ccd11d2396.min.css; recentqsmkii=Stock-US-AAPL; _lr_retry_request=true; _lr_env_src_ats=false; _lr_sampling_rate=0; _pnss=dismissed; fullcss-section=section-15f53c310c.min.css; _dj_ses.cff7=*; _dj_id.cff7=.1691638335.2.1691638415.1691638346.1cb581d7-8c38-46ee-a985-6585241dc745; _ncg_sp_id.f57d=be3e9db5-dba4-4a0e-8345-070478527d6b.1691638334.1.1691638416..355bcfa9-1f16-4ad3-af68-c3a5932ac81c..11fff203-d6ab-4d9b-a1a2-a78d6c9faa60.1691638334563.12; cto_bundle=tfCVBF94MEJVYldSQ0NVaHFpalpDbTJFN1pEMVlDS0hoOENBVEtoQk03RTNTWFBXTlVlc0lIVXhPYlNjV1pUUVNtU0s4RkZPaHNBMlFtc0h0VzJtbXdWcXF6NVFuSXRhYUliVHFmUnBJcGxjZ0xaaUZHRFVIczRaMXozN0RhQmxsNkZkTUhZdkVPZEJQUnJNemVBbFRFdlgxb2clM0QlM0Q; utag_main=v_id:0189dd803edd000cc3ddf5e2d12b0506f00e106700aee$_sn:1$_ss:0$_st:1691640422068$ses_id:1691638316765%3Bexp-session$_pn:4%3Bexp-session$vapi_domain:marketwatch.com$_prevpage:undefined%3Bexp-1691642222070; s_tp=4549; s_ppv=MW_Search%2C77%2C77%2C3520; __gads=ID=5f76ae834c3d2c87:T=1691638332:RT=1691638686:S=ALNI_MYeQa6qXb5p7Jn8m05Wegyo5l6AwQ; __gpi=UID=000009b28943ba2b:T=1691638332:RT=1691638686:S=ALNI_Ma3mi2vCUEEu9MQ552iyJ8f_OnyLg; gdprApplies=false',
-        'newrelic': 'eyJ2IjpbMCwxXSwiZCI6eyJ0eSI6IkJyb3dzZXIiLCJhYyI6IjE2ODQyNzMiLCJhcCI6Ijc1NDg5NDA2MCIsImlkIjoiNDJkMGIwY2I5MzkxNDJjOSIsInRyIjoiMmMyNjQxMzhhMDAxZWIyODhjMDIxODM5MTY5OTQxMDAiLCJ0aSI6MTY5MTYzODY5NjE5MCwidGsiOiIxMDIyNjgxIn19',
-        'referer': f'https://www.marketwatch.com/search?q={company}&ts=0&tab=All%20News&pageNumber={page}',
+        'cookie': 'optimizelyEndUserId=oeu1691638315857r0.7087681223582081; ccpaApplies=true; ccpaUUID=f1b52e2b-831e-4661-a601-26f45b9c22e3; ab_uuid=2bb6b0db-e60c-4a58-8c6f-1a7ffe71c69d; AMCVS_CB68E4BA55144CAA0A4C98A5%40AdobeOrg=1; _cls_v=71b4337b-4d2a-4857-8ab9-25e547a46069; _cls_s=cb9ce4cd-7044-42e8-b7e0-997bafce5259:0; _pcid=%7B%22browserId%22%3A%22ll4lrzf3xsz5befm%22%7D; cX_P=ll4lrzf3xsz5befm; _pctx=%7Bu%7DN4IgrgzgpgThIC4B2YA2qA05owMoBcBDfSREQpAeyRCwgEt8oBJAEzIE4AmHgZi4CsvAIwB2DqIAMADkHTRvEAF8gA; s_ecid=MCMID%7C07811295556865454993086478630926961519; s_cc=true; _uetvid=758743f0372e11eeaf7773af3d00e586; _rdt_uuid=1691638317494.509efc6d-b206-4dad-ab21-fa1245ae3898; _gcl_aw=GCL.1691638318.CjwKCAjw8symBhAqEiwAaTA__Ory9tIPdbQkDnXN5UtbxHrw9yWDTdXcRgrZFKSNTkdxN0A8UQViuBoCVrgQAvD_BwE; _gcl_au=1.1.1194856486.1691638318; cX_G=cx%3Aaay94xhyxbv11gicm2zvcbs06%3A118c0xph4rjn9; permutive-id=6c6c2bca-c05c-4138-88d6-6e1f360c4fc5; mw_loc=%7B%22Region%22%3A%22CA%22%2C%22Country%22%3A%22US%22%2C%22Continent%22%3A%22NA%22%2C%22ApplicablePrivacy%22%3A0%7D; fullcss-home=site-60d04d1451.min.css; icons-loaded=true; pushly.user_puuid=KjxevIlduSipjWShxOsKVchz9Kkg0XwA; letsGetMikey=enabled; dnsDisplayed=false; signedLspa=false; _pubcid=264ea218-4b67-4419-bbe9-75518d56c802; _ncg_domain_id_=1a8cf395-3657-4492-be2f-7e6cb4e543a6.1.1691638334184.1754710334184; _fbp=fb.1.1691638335144.1497534032; _dj_sp_id=e5a66968-eecf-41a1-a2f3-f6bb63e46721; _pcus=eyJ1c2VyU2VnbWVudHMiOm51bGx9; s_sq=djglobal%252Cdjwsj%3D%2526pid%253Dhttps%25253A%25252F%25252Fwww.marketwatch.com%25252F%2526oid%253D%25250A%252520%252520%252520%252520%252520%252520%2526oidt%253D3%2526ot%253DSUBMIT; fullcss-quote=quote-ccd11d2396.min.css; recentqsmkii=Stock-US-AAPL; _lr_env_src_ats=false; fullcss-section=section-15f53c310c.min.css; consentUUID=67c2a1aa-b753-49dc-a1af-16e72cc55240_22; _ncg_id_=1a8cf395-3657-4492-be2f-7e6cb4e543a6; AMCV_CB68E4BA55144CAA0A4C98A5%40AdobeOrg=1585540135%7CMCIDTS%7C19580%7CMCMID%7C07811295556865454993086478630926961519%7CMCAAMLH-1692328332%7C9%7CMCAAMB-1692328332%7CRKhpRz8krg2tLO6pguXWp5olkAcUniQYPHaMWWgdJ3xzPWQmdj0y%7CMCOPTOUT-1691730732s%7CNONE%7CMCAID%7CNONE%7CvVersion%7C4.4.0; _ncg_g_id_=4d40a8c1-d098-4817-9b73-adeb1ac41c21.3.1691665459.1754737942904; _lr_retry_request=true; kayla=g=786071f144dd473aafd9ff6b10f7a39f; gdprApplies=true; _dj_id.cff7=.1691638335.4.1691724198.1691723534.d51a0f87-c3c3-4e0d-aaec-cad543626ab5; usr_bkt=HY0f8Of9M1; _parsely_session={%22sid%22:4%2C%22surl%22:%22https://www.marketwatch.com/search?q=apple&ts=0&tab=All%2520News%22%2C%22sref%22:%22https://www.marketwatch.com/investing/stock/aapl%22%2C%22sts%22:1691726316810%2C%22slts%22:1691723534515}; _parsely_visitor={%22id%22:%22pid=bf2e4b8d-4749-421a-840f-2d21ae71034b%22%2C%22session_count%22:4%2C%22last_session_ts%22:1691726316810}; _lr_geo_location_state=ZH; _lr_geo_location=NL; _pnss=blocked; sso_fired_at=1691726326729; _pbjs_userid_consent_data=8871137552901317; __gads=ID=5f76ae834c3d2c87:T=1691638332:RT=1691726327:S=ALNI_MYeQa6qXb5p7Jn8m05Wegyo5l6AwQ; __gpi=UID=000009b28943ba2b:T=1691638332:RT=1691726327:S=ALNI_Ma3mi2vCUEEu9MQ552iyJ8f_OnyLg; _lr_sampling_rate=100; _ncg_sp_ses.f57d=*; cto_bundle=WExp8194MEJVYldSQ0NVaHFpalpDbTJFN1pETFUwdXR1RWdUMzZCYzluR1pMeVo5WEhmWUtva3ZkY2pQTjFWNlhpc2p6NEQwcmYlMkJqYlc0V29XSU05Q0MyUTRDV3dxQjEwa3NIYVpiJTJGTzNkZDVxYWhyc3lDYkpqcG1HZ2VCam5uSWNzaDlwYVEyZWRsaGVLa0RsVHlaU3BUcGtRJTNEJTNE; utag_main=v_id:0189dd803edd000cc3ddf5e2d12b0506f00e106700aee$_sn:5$_ss:0$_st:1691728136829$vapi_domain:marketwatch.com$_prevpage:MW_Search%3Bexp-1691729936835$ses_id:1691726329310%3Bexp-session$_pn:2%3Bexp-session; _ncg_sp_id.f57d=1a8cf395-3657-4492-be2f-7e6cb4e543a6.1691638334.5.1691726341.1691724198.3eeb2ae9-d043-4806-9840-a470e1a7ac38; ln_or=eyIzOTQyNDE3IjoiZCJ9; s_tp=5355; s_ppv=MW_Search%2C46%2C44%2C2461; gdprApplies=true',
+        'newrelic': 'eyJ2IjpbMCwxXSwiZCI6eyJ0eSI6IkJyb3dzZXIiLCJhYyI6IjE2ODQyNzMiLCJhcCI6Ijc1NDg5OTM4MiIsImlkIjoiYjhmMjQwNDZjZWUxM2QxNiIsInRyIjoiMmFkMTRhZmI4YjZiNWJmNzczY2UyYzhlMjVjMzc3MDAiLCJ0aSI6MTY5MTcyNjgxNDc4NCwidGsiOiIxMDIyNjgxIn19',
+        'referer': 'https://www.marketwatch.com/search?q=apple&ts=5&sd=07%2F10%2F2018&ed=10%2F17%2F2018&tab=All%20News',
         'sec-ch-ua': '"Not/A)Brand";v="99", "Google Chrome";v="115", "Chromium";v="115"',
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': '"Windows"',
         'sec-fetch-dest': 'empty',
         'sec-fetch-mode': 'cors',
         'sec-fetch-site': 'same-origin',
-        'traceparent': '00-2c264138a001eb288c02183916994100-42d0b0cb939142c9-01',
-        'tracestate': '1022681@nr=0-1-1684273-754894060-42d0b0cb939142c9----1691638696190',
+        'traceparent': '00-2ad14afb8b6b5bf773ce2c8e25c37700-b8f24046cee13d16-01',
+        'tracestate': '1022681@nr=0-1-1684273-754899382-b8f24046cee13d16----1691726814784',
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
         }
 
         response = requests.request("GET", url, headers=headers, data=payload)
-        response_text = response.text
-        soup = BeautifulSoup(response_text, 'html.parser')
+        '''
+        if indexer%800 == 0 and indexer!=0: #i think I need this in order to stop the 403 request errors
+            input("Change IP address then hit enter to continue: ")
+        '''
+        try:
+            response = requests.request("GET", url, headers=headers, data=payload)
+            response_text = response.text
+            soup = BeautifulSoup(response_text, 'html.parser')
 
-        # Find all elements with the class "article__headline"
-        headline_elements = soup.find_all(class_="article__headline")
+            # Find all elements with the class "article__headline"
+            headline_elements = soup.find_all(class_="article__headline")
+        except:
+            input("Change IP address then hit enter to continue: ")
+            continue
 
         # Iterate through headline elements and extract headlines and dates
         for headline_element in headline_elements:
             headline_text = headline_element.a.get_text(strip=True)
-            
+            summary_element = headline_element.find_next(class_="article__summary")
             # Find the corresponding timestamp element
             timestamp_element = headline_element.find_next(class_="article__timestamp")
             date_text = timestamp_element.get_text(strip=True)
+            summary_text = summary_element.get_text(strip=True)
             
             if headline_text and date_text:
                 data['Date'].append(date_text)
-                size = len(data['Date'])
-                if size%1000==0:
-                    print(size)
                 data['Headline'].append(headline_text)
+                data['Summary'].append(summary_text)
         
+        indexer+=1
+        if indexer%20==0:
+            print(indexer)
+        current_date = current_date + timedelta(days=2) #have to increment by 2 days because I'm getting two days worth of data at a time
+
     df = pd.DataFrame(data)
     j = df.to_json(orient='records',date_format='iso')
     with open(f'web_scraping/{company}_marketwatch.dat','w') as file:
@@ -273,20 +311,7 @@ def get_cnbc_data(company, scroll: int = 30):
     driver.quit()
 
 
-#HUGGING FACE PRE TRAINED SENTIMENT MODEL
-from transformers import AutoTokenizer,AutoModelForSequenceClassification
-from scipy.special import softmax
-
-MODEL = f"cardiffnlp/twitter-roberta-base-sentiment"
-tokenizer = AutoTokenizer.from_pretrained(MODEL)
-model = AutoModelForSequenceClassification.from_pretrained(MODEL)
-
-def roberta_sentiment(sentence:str):
-    encoded_text = tokenizer(sentence,return_tensors='pt')
-    output = model(**encoded_text)
-    scores = output[0][0].detach().numpy() #returns sentiment scores as a np array of the form [neg,neutral,pos]
-    scores = softmax(scores)
-    #lets return one number in the range (-1,1), -1 being as negative as possible and 1 being as positive as possible
-    sentiment = scores[0]*(-1.) + scores[1]*0. + scores[2]*1.
-    return sentiment
-
+#get_cnbc_data('apple',scroll=60)
+#get_marketwatch_data('apple')
+get_marketwatch_data('tesla')
+get_bloomberg_data('TSLA')

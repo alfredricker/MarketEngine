@@ -7,12 +7,12 @@ I also wanted to make note that there should be a feature where you input into t
 With a combination of AlphaVantage and Nasdaq Data Link I can probably write a nice HFT deep learning algorithm. For now I'm just going to do daily frequency. With SerpAPI you could write a separate neural network that scrapes for news articles on a given a stock
 
 #7-28-23
-Use postman for debuggin and web scraping
+Use postman for debugging and web scraping
 
 #8-1-23
 api.explodingtopics.com looks like it will be a very useful api (if it turns out to be free and functional)
 
-I think that web scarping the popularity and sentiment of a given company at a given time should be the crux of the model
+I think that web scraping the popularity and sentiment of a given company at a given time should be the crux of the model
 
 #8-3-23
 For EPS data, I am using alphavantage and am including a counter of the number of weeks since the release of the data (because this might be relevant to price hype and what not)

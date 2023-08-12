@@ -152,6 +152,37 @@ def percent_forward_fill(df):
     return df_new
 
 
+#this function is the same as datetime forward fill except it averages the values of duplicate dates
+def multiple_date_fill(df):
+    #this function takes in a pandas data frame and fills in all missing daily values by taking the most recent value
+    if not 'Date' in df.columns:
+        return print("Error: must have 'Date' column in dataframe")
+    df_sorted = df.sort_values(by='Date')
+    df_sorted['Date'] = pd.to_datetime(df_sorted['Date']).dt.date
+    currentdate = df_sorted['Date'].iloc[0]
+    loc_index = 1
+    df_new = df_sorted
+    while currentdate<df_sorted.max(axis=0)[0]:
+        #check to see if next date has data     
+        if currentdate + timedelta(days=1) == df_sorted['Date'].iloc[loc_index]:
+            currentdate = df_sorted['Date'].iloc[loc_index]
+            loc_index+=1
+        elif currentdate == df_sorted['Date'].iloc[loc_index]: #if the current date equals the next date, continue
+            loc_index+=1
+        else:
+            #loop through all target columns
+            inc_date = currentdate + timedelta(days=1)
+            new_row = {'Date':inc_date}
+            for column in df.columns[1:]:
+                new_row[column] = df_sorted[column].iloc[loc_index-1]
+            df_new = pd.concat([df_new,pd.DataFrame([new_row])],ignore_index=True)
+            currentdate = inc_date
+    df_new = df_new.sort_values(by='Date')
+    mean_column = df_new.columns[1] #column to take the mean of
+    df_new = df_new.groupby('Date')[mean_column].mean().reset_index()
+    return df_new
+
+
 #similar to forward fill but tailored to the zillow housing data
 #this also rewrites the value column as a percent change
 def housing_formatter(city):

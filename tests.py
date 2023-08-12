@@ -31,8 +31,25 @@ for i in range(X.shape[1]):
     scaled = scaler.fit_transform(X[:,i].reshape(-1,1))
     X[:,i] = scaled.flatten()
 print(X)
-'''
+
 formatted = fn.earnings_formatter('META')
 print(formatted)
 
 print(pd.isna(formatted[1]['surprise'].iloc[0]))
+'''
+# Create a sample DataFrame
+data = {'ID': [1, 2, 3],
+        'A': [10, 15, 20],
+        'B': [5, 10, 15],
+        'C': [3, 6, 9]}
+
+df = pd.DataFrame(data)
+print(df)
+
+# Calculate the average of values from column 1 onwards for each row
+average_series = df.apply(lambda row: row[1:].mean(), axis=1)
+
+# Convert the average Series back to a DataFrame
+average_df = pd.concat([df.iloc[:,0],pd.DataFrame({'Average': average_series})],axis=1)
+
+print(average_df)
