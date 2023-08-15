@@ -7,9 +7,10 @@ from datetime import datetime
 
 #MODEL STOCKS
 #stocks currently in the model. It is import that these two lists are aligned ticker:company
-model_stocks = ['AAPL','AMD','AMZN','F','GOOG','META','MSFT','NVDA','T','TSLA','TUP']
-model_companies = ['Apple','AMD','Amazon','Ford','Google','Facebook','Microsoft','Nvidia','AT&T','Tesla','TUP']
-
+model_stocks = ['AAPL','AMD','TSLA','F','GOOG','TUP','MSFT','NVDA','T','AMZN','META']
+model_companies = ['Apple','AMD','Tesla','Ford','Google','TUP','Microsoft','Nvidia','AT&T','Amazon','Facebook']
+retail_stocks = ['AAPL','AMD','AMZN','MSFT','NVDA','TSLA']
+retail_companies = ['Apple','AMD','Amazon','Microsoft','Nvidia','Tesla']
 #TREND DATA
 def trend_init(company:str):
     with open(f'data_misc/trend_{company}.dat', 'r') as file:
@@ -116,8 +117,11 @@ def news_roberta(company,outlet): #pretty much the same as bloomberg init
         sentiment_df['Headline_score'].append(headline_score)
         #sentiment_df['Summary_score'].append(summary_score)
     sentiment_df = pd.DataFrame(sentiment_df)
+    #print(sentiment_df)
     df = pd.concat([data,sentiment_df],axis=1)
+    #print(df)
     df = df[['Date','Headline_score']]
+    #df.reset_index(inplace=True)
     df = fn.multiple_date_fill(df)
     return df
 
@@ -131,9 +135,14 @@ def news_formatter(company,symbol,outlets=['bloomberg','marketwatch']):
             df_list.append(df) #bloomberg files are located by their symbol
         else:
             df_list.append(news_roberta(company,outlet)) #all others are located by their company name
-    df = fn.concatenate_data(df_list)
+    if len(df_list)>1:
+        df = fn.concatenate_data(df_list)
+    else:
+        df = df_list[0]
+    #print(df)
     #collapse all the headline scores into one averaged column
     average_series = df.apply(lambda row: row[1:].mean(), axis=1)
+    #print(average_series)
     # Convert the average Series back to a DataFrame
     average_df = pd.concat([df.iloc[:,0],pd.DataFrame({'Headline': average_series})],axis=1)
 
@@ -160,8 +169,9 @@ def sentiment_init(stocks_list,companies_list):
 
         stock = fn.equity_formatter(stocks_list[i])
         stock_close = stock[0]
+        stock_rsi = fn.calculate_rsi(stocks_list[i])
 
-        data_list = [stock_close,stock_trend,retail_df,news_sentiment]
+        data_list = [stock_close,stock_trend,retail_df,news_sentiment,stock_rsi]
         df = fn.concatenate_data(data_list)
         df['Close_Tmr'] = df['Close'].shift(-1)
         df = df.drop(index=df.index[-1]) #drop the last row because the above shift method will result in NaN values
@@ -173,5 +183,7 @@ def sentiment_init(stocks_list,companies_list):
     print(f'Initialized sentiment data')
     return data
 
-news_formatter('META','META')
-news_formatter('ford','F')
+
+#sentiment_init(retail_stocks,retail_companies)
+#equity_init(model_stocks,model_companies)
+news_formatter('ford','F',outlets=['marketwatch'])

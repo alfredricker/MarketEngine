@@ -313,5 +313,5 @@ def get_cnbc_data(company, scroll: int = 30):
 
 #get_cnbc_data('apple',scroll=60)
 #get_marketwatch_data('apple')
-get_marketwatch_data('tesla')
-get_bloomberg_data('TSLA')
+get_bloomberg_data('Disney',max_page=30)
+get_marketwatch_data('DIS')

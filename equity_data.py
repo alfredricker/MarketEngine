@@ -35,14 +35,14 @@ def get_news_sentiment(symbol:str):
 
 #history only goes as far back as 2016. I will probel have to integrate this into a different neural network that also utilizes a news sentiment model.
 def get_retail_sentiment(symbol:str):    
-    start_date = datetime(2000,1,5)
+    start_date = datetime(2016,1,1)
     #I have to make a list because the quandl api is annoying and calls by either a single date or an enumerated list of dates.
     #calling by each date individually takes a really long time so I have to go with this route
     def day_string(start_date,length:int):
         days_string = ', '.join([(start_date + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(length)])
         return days_string
 
-    end_date = datetime(2001,1,1)
+    end_date = datetime(2023,7,1)
     current_date = start_date
 
     #I probably could have just made an empty data frame and left this code in the loop
@@ -85,5 +85,6 @@ def balance_sheet_formatter(symbol:str):
 #get_earnings('META')
 #get_earnings('GOOG')
 #get_earnings('AMD')
-#get_retail_sentiment(symbol)
+get_retail_sentiment('F')
+
 

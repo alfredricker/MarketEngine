@@ -299,9 +299,11 @@ def retail_sentiment_formatter(symbol):
         j = file.read()
     df = pd.read_json(j)
     df.rename(columns={'date':'Date'},inplace=True)
+    df.reset_index(inplace=True)
+    df = df.fillna(0) #don't want to do forward fills
     df = df[['Date','sentiment']]
-
     return df
+
 
 #returns the (almost) proper df to start the neural network process
 def concatenate_data(df_list):
@@ -329,7 +331,29 @@ def concatenate_data(df_list):
     return result_df
 
 
+#make it so that the target column has an equal number of ones and zeros. Note that the transform_to_binary function must be ran first
 def remove_imbalances(df:pd.DataFrame,target_column:str):
+        # Check if the target column exists in the DataFrame
+    if target_column not in df.columns:
+        raise ValueError(f"Target column '{target_column}' not found in DataFrame.")
+
+    # Separate the DataFrame into positive and negative samples
+    positive_samples = df[df[target_column] == 1]
+    negative_samples = df[df[target_column] == 0]
+
+    # Determine the minimum number of samples for balancing
+    min_samples = min(len(positive_samples), len(negative_samples))
+
+    # Sample an equal number of positive and negative samples
+    balanced_positive_samples = positive_samples.sample(min_samples, random_state=42)
+    balanced_negative_samples = negative_samples.sample(min_samples, random_state=42)
+
+    # Combine the balanced samples back into a single DataFrame
+    balanced_df = pd.concat([balanced_positive_samples, balanced_negative_samples], ignore_index=True)
+    return balanced_df
+
+
+def remove_imbalances_old(df:pd.DataFrame,target_column:str):
     # Get counts of positive and negative values in the target column
     pos_count = df[target_column].gt(0).sum()
     neg_count = df[target_column].le(0).sum()
@@ -346,8 +370,22 @@ def remove_imbalances(df:pd.DataFrame,target_column:str):
 
     return df_balanced
 
+
+#transform the values of your target column to 1 if > 0 and 0 if <=0
+def transform_to_binary(df:pd.DataFrame,target_column:str):
+    # Check if the target column exists in the DataFrame
+    if target_column not in df.columns:
+        raise ValueError(f"Target column '{target_column}' not found in DataFrame.")
+
+    # Transform the values of the target column to binary
+    condition = df[target_column] > 0
+    df.loc[condition,target_column] = 1
+    df.loc[~condition,target_column] = 0
+    return df
+
+
 #this function transforms the daily return values to binary form (1 for positive and 0 for negative)
-def transform_to_binary(targets:np.ndarray[np.float32]):
+def transform_to_binary_np(targets:np.ndarray[np.float32]):
     binary_array = (targets>0).astype(int)
     return binary_array
 

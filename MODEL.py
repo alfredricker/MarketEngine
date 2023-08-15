@@ -7,6 +7,7 @@ import json
 import functions as fn
 
 df = pd.read_csv('DATA.csv')
+df = df.iloc[:,1:]
 df.fillna(value=0,inplace=True)
 size = df.shape[1]
 

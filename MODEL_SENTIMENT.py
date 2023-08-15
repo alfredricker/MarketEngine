@@ -1,50 +1,61 @@
+from typing import Any
+from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 import torch
-import datetime
-from datetime import timedelta
+import torch.autograd as autograd
+import torch.nn.functional as F
+from torch.utils.data import Dataset,DataLoader
+from tqdm.auto import tqdm
+
 import numpy as np
 import pandas as pd
-import json
 import functions as fn
 
-df = pd.read_csv('DATA.csv')
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report,confusion_matrix
+
+from multiprocessing import cpu_count
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+from pytorch_lightning.loggers import TensorBoardLogger
+from torchmetrics import Accuracy
+
+pl.seed_everything(42) #make results reproducible
+
+# Load and preprocess your data
+df = pd.read_csv('DATA_SENTIMENT.csv')
+df = df.iloc[:,1:] #remove the unwanted index column
 df.fillna(value=0,inplace=True)
 size = df.shape[1]
+df = fn.transform_to_binary(df,'Close_Tmr')
+#print(df)
+# Split the data into training and test sets (95:5 ratio)
+train_df, test_df = train_test_split(df, test_size=0.10)
 
-has_nan = df.isna().any()
-print(has_nan)
-#print(f'size: {size}')
+# Remove imbalances from training data
+balanced_train_df = fn.remove_imbalances(train_df, 'Close_Tmr')
+#print(balanced_train_df)
 
-from sklearn.preprocessing import MinMaxScaler,StandardScaler
-X = df.drop(columns=['Close_Tmr'])
-#print(f'X: {X}')
-Y = df['Close_Tmr']
-#print(f'Y: {Y}')
-X = X.to_numpy()
-Y = Y.to_numpy()
+# Get X_train_balanced and Y_train_balanced as DataFrames
+X_train = balanced_train_df.drop(columns=['Close_Tmr']).to_numpy()
+Y_train = balanced_train_df['Close_Tmr'].to_numpy()
+X_test = test_df.drop(columns=['Close_Tmr']).to_numpy()
+Y_test = test_df['Close_Tmr'].to_numpy()
 
+batch_size=32
+
+# ... (Data preprocessing code here)
 scaler_X = StandardScaler()
-X = scaler_X.fit_transform(X)
-
+X_train = scaler_X.fit_transform(X_train)
+X_test = scaler_X.transform(X_test)
 #scaler_Y = StandardScaler()
+
 scaler_Y = MinMaxScaler(feature_range=(-1,1))
-Y = scaler_Y.fit_transform(Y.copy().reshape(-1,1))
+Y_train = scaler_Y.fit_transform(Y_train.reshape(-1,1))
+Y_test = scaler_Y.transform(Y_test.reshape(-1,1))
 
-device = 'cuda:0' if torch.cuda.is_available() else 'cpu' #run this program on the gpu if it is available
-
-#aapl_np = aapl_df.to_numpy()
-#aapl_np = scaler.fit_transform(aapl_np)
-
-split_index = int(len(X)*0.95) # I will use 90% of the data as training
-X_train = X[:split_index]
-X_test = X[split_index:]
-Y_train = Y[:split_index]
-Y_test = Y[split_index:]
-#print(X_train.shape,X_test.shape,Y_train.shape,Y_test.shape)
-#PyTorch LSTMs must have an extra dimension at the end
-X_train = X_train.reshape(-1,size-1,1)
-X_test = X_test.reshape(-1,size-1,1)
-Y_train = Y_train.reshape(-1,1)
-Y_test = Y_test.reshape(-1,1)
+#X_train = X_train.reshape(batch_size,-1,size-1)
+#X_test = X_test.reshape(batch_size,-1,size-1)
 #print(X_train.shape,X_test.shape,Y_train.shape,Y_test.shape)
 #Time to convert to PyTorch tensors
 X_train = torch.tensor(X_train,dtype=torch.float32)
@@ -52,127 +63,149 @@ X_test = torch.tensor(X_test,dtype=torch.float32)
 Y_train = torch.tensor(Y_train,dtype=torch.float32)
 Y_test = torch.tensor(Y_test,dtype=torch.float32)
 
-from torch.utils.data import Dataset
+device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
 class TimeSeriesDataset(Dataset):
-    def __init__(self,X,Y):
+    def __init__(self, X, Y):
         self.X = X
         self.Y = Y
+
     def __len__(self):
         return len(self.X)
-    def __getitem__(self,i):
-        return self.X[i],self.Y[i]
 
-train_dataset = TimeSeriesDataset(X_train,Y_train)
-test_dataset = TimeSeriesDataset(X_test,Y_test)
+    def __getitem__(self, i):
+        x = self.X[i].to(device)
+        y = self.Y[i].to(device)
+        return x,y
+    
+class TimeSeriesDataModule(pl.LightningDataModule):
+    def __init__(self, X_train, X_test, Y_train, Y_test, batch_size):
+        super().__init__()
+        self.X_train = X_train
+        self.X_test = X_test
+        self.Y_train = Y_train
+        self.Y_test = Y_test
+        self.batch_size = batch_size
+    
+    def setup(self, stage=None):
+        self.train_dataset = TimeSeriesDataset(self.X_train,self.Y_train)
+        self.test_dataset = TimeSeriesDataset(self.X_test,self.Y_test)
 
-from torch.utils.data import DataLoader
-batch_size = 16
-train_loader = DataLoader(train_dataset,batch_size=batch_size,shuffle=True)
-test_loader = DataLoader(train_dataset,batch_size=batch_size,shuffle=False)
-#send the batches to the gpu if available
-for _,batch in enumerate(train_loader):
-    x_batch = batch[0].to(device)
-    y_batch = batch[1].to(device)
-    #print(x_batch.shape,y_batch.shape)
-    break
+    def train_dataloader(self):
+        return DataLoader(
+            self.train_dataset,
+            batch_size=self.batch_size,
+            shuffle=True
+        )
+    def val_dataloader(self):
+        return DataLoader(
+            self.test_dataset,
+            batch_size=self.batch_size,
+            shuffle=False
+        )
+    def test_dataloader(self):
+        return DataLoader(
+            self.test_dataset,
+            batch_size=self.batch_size,
+            shuffle=False
+        )
+    
+num_epochs = 50
 
-class LSTM(torch.nn.Module):
-    def __init__(self,input_size,hidden_size,num_stacked_layers):
+data_module = TimeSeriesDataModule(X_train,X_test,Y_train,Y_test,batch_size=batch_size)
+
+# Define your LSTM classifier
+
+class LSTMClassifier(torch.nn.Module):
+    def __init__(self, num_features, num_classes, hidden_size=6, num_stacked_layers=2):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_stacked_layers = num_stacked_layers
-        self.lstm = torch.nn.LSTM(input_size,hidden_size,num_stacked_layers,batch_first=True)
-        self.fc = torch.nn.Linear(hidden_size,1)
-    def forward(self,x):
-        batch_size=x.size(0)
-        h0 = torch.zeros(self.num_stacked_layers,batch_size,self.hidden_size).to(device)
-        c0 = torch.zeros(self.num_stacked_layers,batch_size,self.hidden_size).to(device)
-        out,_ = self.lstm(x,(h0,c0))
-        out = self.fc(out[:,-1,:])
+        self.lstm = torch.nn.LSTM(input_size=num_features, hidden_size=hidden_size, num_layers=num_stacked_layers, batch_first=True) #dropout = 0.75
+        self.classifier = torch.nn.Linear(hidden_size,num_classes)
+
+    def forward(self, x):
+        #batch_size = x.size(0)
+        #h0 = torch.zeros(self.num_stacked_layers, batch_size, self.hidden_size).to(device)
+        #c0 = torch.zeros(self.num_stacked_layers, batch_size, self.hidden_size).to(device)
+        out, _ = self.lstm(x) #(h0, c0))
+        out = self.classifier(out)
         return out
-#first try num_stacked_layers = 2 (read into stacking layers in LSTM networks)
 
-model = LSTM(1,6,4) #LSTM(1,4,2)
-model.to(device)
+#initialize the torch accuracy class
+accuracy = Accuracy(task='binary')
 
+class PricePredictor(pl.LightningModule):
+    def __init__(self,num_features:int,num_classes:int):
+        super().__init__()
+        self.model = LSTMClassifier(num_features,num_classes)
+        self.criterion = torch.nn.CrossEntropyLoss()
+    
+    def forward(self,x,labels=None):
+        output = self.model(x)
+        loss = 0
+        if labels is not None:
+            loss = self.criterion(output,labels)
+        return loss,output
+    
+    def training_step(self,batch,batch_i):
+        X_batch,Y_batch = batch
+        loss,output = self.forward(X_batch,labels=Y_batch)
+        predictions = torch.argmax(output,dim=1)
+        step_accuracy = accuracy(predictions,Y_batch)
+        self.log("train_loss",loss,prog_bar=True,logger=True)
+        self.log("train_accuracy",step_accuracy.item(),prog_bar=True,logger=True)
+        #print(f'Train Loss: {loss:.2f}')
+        #print(f'Train Accuracy: {accuracy * 100:.2f}%')
+        return {"loss":loss,"accuracy":accuracy}
+    
+    def validation_step(self,batch,batch_i):
+        X_batch,Y_batch = batch
+        loss,output = self.forward(X_batch,labels=Y_batch)
+        predictions = torch.argmax(output,dim=1)
+        step_accuracy = accuracy(predictions,Y_batch)
+        self.log("val_loss",loss,prog_bar=True,logger=True)
+        self.log("val_accuracy",step_accuracy.item(),prog_bar=True,logger=True)
+        #print(f'Validation Loss: {loss:.2f}')
+        #print(f'Validation Accuracy: {accuracy * 100:.2f}%')
+        return {"loss":loss,"accuracy":accuracy}
+    
+    def test_step(self,batch,batch_i):
+        X_batch,Y_batch = batch
+        loss,output = self.forward(X_batch,labels=Y_batch)
+        predictions = torch.argmax(output,dim=1)
+        step_accuracy = accuracy(predictions,Y_batch)
+        self.log("test_loss",loss,prog_bar=True,logger=True)
+        self.log("test_accuracy",step_accuracy.item(),prog_bar=True,logger=True)
+        #print(f'Test Loss: {loss:.2f}')
+        #print(f'Test Accuracy: {accuracy * 100:.2f}%')
+        return {"loss":loss,"accuracy":accuracy}
+    
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(),lr=0.0001)
+    
+model = PricePredictor(num_features=size-1,num_classes=2)
+# Set up your data, model, and training loop
 
-#includes a penalty for getting the sign wrong. this loss function doesn't seem to work properly for high penalties  
-class MSELossWithPenalty(torch.nn.Module):
-    def __init__(self, penalty_factor):
-        super(MSELossWithPenalty, self).__init__()
-        self.penalty_factor = penalty_factor
+checkpoint_callback = ModelCheckpoint(
+    dirpath="checkpoints",
+    filename="best-checkpoint",
+    save_top_k=1,
+    verbose=True,
+    monitor="val_loss",
+    mode="min"
+)
 
-    def forward(self, predictions, targets):
-        # Calculate the mean squared error (MSE) loss
-        mse_loss = torch.nn.MSELoss()(predictions, targets)
+logger = TensorBoardLogger("lightning_logs",name="returns")
 
-        # Apply the penalty for incorrect sign predictions
-        prediction_signs = torch.sign(predictions)
-        target_signs = torch.sign(targets)
-        
-        incorrect_signs = torch.zeros_like(prediction_signs)
-        for i in range(len(prediction_signs)):
-            if prediction_signs[i] != target_signs[i]:
-                incorrect_signs[i] = 1.0
-        sign_penalty = torch.mean(incorrect_signs)
-        # Combine the MSE loss and the penalty with the given factor
-        total_loss = mse_loss + self.penalty_factor * sign_penalty
-        return total_loss
+trainer = pl.Trainer(
+    logger=logger,
+    max_epochs=num_epochs
+)
 
-# Assuming you have defined your neural network as 'model'
-# and you have your training data and targets as 'train_data' and 'train_targets', respectively.
+trainer.fit(model,data_module)
 
-#loss_function = AccuracyCrossEntropyLoss()
-sign_penalty = 1.0
-loss_function = torch.nn.MSELoss()
-learning_rate = 0.00005 #this worked way better than 0.0001
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-num_epochs = 10
-
-max_norm = 2.
-
-def train_one_epoch():
-    model.train(True)
-    print(f'Epoch: {epoch+1}')
-    running_loss = 0.0
-    for batch_index,batch in enumerate(train_loader):
-        x_batch,y_batch = batch[0].to(device),batch[1].to(device)
-        output = model(x_batch)
-        loss = loss_function(output,y_batch)
-        running_loss += loss.item()
-        optimizer.zero_grad()
-        loss.backward()
-
-        torch.nn.utils.clip_grad_norm_(model.parameters(),max_norm=max_norm)
-
-        optimizer.step()
-        if batch_index % 100 == 99:
-            avg_loss_across_batches = running_loss / 100
-            print('Batch {0}, Loss{1:,.3f}'.format(batch_index+1, avg_loss_across_batches))
-            running_loss = 0.
-
-def validate_one_epoch():
-    model.train(False)
-    running_loss = 0.0
-    for batch_index,batch in enumerate(test_loader):
-        x_batch,y_batch = batch[0].to(device),batch[1].to(device)
-        with torch.no_grad():
-            output = model(x_batch)
-            loss = loss_function(output,y_batch)        
-            running_loss+=loss.item()
-    avg_loss_across_batches = running_loss / len(test_loader)          
-    print('Val loss: {0:.3f}'.format(avg_loss_across_batches))
-    print('--------------------------------------')
-
-#add a learning rate scheduler
-#scheduler = torch.optim.lr_scheduler.StepLR(optimizer,step_size=2,gamma=0.5)
-
-for epoch in range(num_epochs):
-    train_one_epoch()
-    validate_one_epoch()
-
-
+'''
 #get the numpy array of the predicted values
 with torch.no_grad():
     predicted = model(X_train.to(device)).to('cpu').numpy()
@@ -187,23 +220,11 @@ Y_test_original = scaler_Y.inverse_transform(Y_test).flatten()
 
 test_predictions = scaler_Y.inverse_transform(predicted_test).flatten()
 
-#see how many times it correctly guesses the sign
-ones_test = torch.ones_like(torch.tensor(Y_test_original.copy()))
-hold_perform = 0
-Y_test_sign = torch.sign(torch.tensor(Y_test_original.copy()))
-predictions_sign = torch.sign(torch.tensor(test_predictions.copy()))
-model_perform = 0
-for i in range(len(Y_test_original)):
-    if predictions_sign[i] == Y_test_sign[i]:
-        model_perform+=1
-    if ones_test[i] == Y_test_sign[i]:
-        hold_perform+=1
-print(f'Model performance: {model_perform} \nHold performance: {hold_perform}')
-
 data = {
     'Actual': Y_test_original,
     'Predicted': test_predictions
 }
 
 df_comparison = pd.DataFrame(data)
-df_comparison.to_csv('csv_tests/comparison.csv')
+df_comparison.to_csv('csv_tests/comparison_sentiment.csv')
+'''

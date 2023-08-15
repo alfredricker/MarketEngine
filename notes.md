@@ -31,6 +31,9 @@ You must transform the target data to binary [0,1]
 To address class imbalances make sure that the training data has an equal number of positive and negative days. This makes sure that the model won't simply find the 
 local minimum of guessing all positive days.
 
+#8-13-23
+IMPORTANT: Add a CNN layer before the LSTM. This will allow for automated feature selection
+
 ##HOW TO CREATE THE MODEL
 Data Preprocessing: Clean and preprocess your data thoroughly. Handle missing values, scale the features appropriately, and consider normalization or standardization to make optimization easier for the neural network.
 
