@@ -332,25 +332,31 @@ def concatenate_data(df_list):
 
 
 #make it so that the target column has an equal number of ones and zeros. Note that the transform_to_binary function must be ran first
-def remove_imbalances(df:pd.DataFrame,target_column:str):
-        # Check if the target column exists in the DataFrame
-    if target_column not in df.columns:
-        raise ValueError(f"Target column '{target_column}' not found in DataFrame.")
+def remove_imbalances(df,target_column:str,sequence=False):
+    if sequence==False: 
+            # Check if the target column exists in the DataFrame
+        if target_column not in df.columns:
+            raise ValueError(f"Target column '{target_column}' not found in DataFrame.")
 
-    # Separate the DataFrame into positive and negative samples
-    positive_samples = df[df[target_column] == 1]
-    negative_samples = df[df[target_column] == 0]
+        # Separate the DataFrame into positive and negative samples
+        positive_samples = df[df[target_column] == 1]
+        negative_samples = df[df[target_column] == 0]
+        # Determine the minimum number of samples for balancing
+        min_samples = min(len(positive_samples), len(negative_samples))
+        # Sample an equal number of positive and negative samples
+        balanced_positive_samples = positive_samples.sample(min_samples)#, random_state=42)
+        balanced_negative_samples = negative_samples.sample(min_samples)#, random_state=42)
 
-    # Determine the minimum number of samples for balancing
-    min_samples = min(len(positive_samples), len(negative_samples))
+        # Combine the balanced samples back into a single DataFrame
+        balanced_df = pd.concat([balanced_positive_samples, balanced_negative_samples], ignore_index=True)
+        return balanced_df
+    else:
+        #find the data frame in the sequences list of the smallest size and then set all other dataframes to be that size
+        min_size = min(len(frame[0]) for frame in df) #in this case df would be the list of sequences 
+        # Resize all DataFrames to the smallest size
+        resized_sequences = [frame[0][:min_size] for frame in df]
+        return resized_sequences
 
-    # Sample an equal number of positive and negative samples
-    balanced_positive_samples = positive_samples.sample(min_samples, random_state=42)
-    balanced_negative_samples = negative_samples.sample(min_samples, random_state=42)
-
-    # Combine the balanced samples back into a single DataFrame
-    balanced_df = pd.concat([balanced_positive_samples, balanced_negative_samples], ignore_index=True)
-    return balanced_df
 
 
 def remove_imbalances_old(df:pd.DataFrame,target_column:str):
@@ -417,3 +423,36 @@ def calculate_rsi(symbol: str, period: int = 14):
     equity_df['RSI'] = rsi
     rsi_df = equity_df.drop(columns=['Close'])  # Drop the 'Close' column
     return rsi_df
+
+
+#this isn't what you want if you're going to do it the way valkov does it. You're going to have to group by the target column then make 3 sequences, one for positive days, one for negative days, and one for neutral days.
+def get_sequences(X_df:pd.DataFrame,Y_df:pd.DataFrame,sequence_size:int):
+    sequences = []
+    def is_single_column_dataframe(df):
+        return df.shape[1] > 1 if len(df.shape) == 2 else False
+    num_rows = X_df.shape[0]
+    y_col = is_single_column_dataframe(Y_df)
+    if num_rows!=Y_df.shape[0]:
+        print("Get sequences error: X and Y must have same shape!")
+        return -1
+    count_rows = sequence_size
+    indexer = 0
+    while count_rows < num_rows:
+        ind_data = X_df.iloc[indexer:count_rows,:]
+        if y_col:
+            target_data = Y_df.iloc[indexer:count_rows,:]
+        else:
+            target_data = Y_df.iloc[indexer:count_rows]
+        sequences.append((ind_data,target_data))
+        count_rows+=sequence_size
+        indexer+=sequence_size
+    return sequences
+
+
+def sort_by_label(df:pd.DataFrame,target_column:str):
+    sequences = []
+    for id,groups in df.groupby(target_column):
+        sequence_df = groups.drop(columns=[target_column])
+        label = groups[target_column].iloc[0]
+        sequences.append((sequence_df,label))
+    return sequences

@@ -28,13 +28,13 @@ df = df.iloc[:,1:] #remove the unwanted index column
 df.fillna(value=0,inplace=True)
 size = df.shape[1]
 df = fn.transform_to_binary(df,'Close_Tmr')
-#print(df)
-# Split the data into training and test sets (95:5 ratio)
-train_df, test_df = train_test_split(df, test_size=0.10)
+print(df)
 
-# Remove imbalances from training data
+# Split the data into training and test sets (95:5 ratio)
+train_df, test_df = train_test_split(df, test_size=0.1)
+
+# Remove imbalances from training data.. this is already done with sort_by_label
 balanced_train_df = fn.remove_imbalances(train_df, 'Close_Tmr')
-#print(balanced_train_df)
 
 # Get X_train_balanced and Y_train_balanced as DataFrames
 X_train = balanced_train_df.drop(columns=['Close_Tmr']).to_numpy()
@@ -50,9 +50,9 @@ X_train = scaler_X.fit_transform(X_train)
 X_test = scaler_X.transform(X_test)
 #scaler_Y = StandardScaler()
 
-scaler_Y = MinMaxScaler(feature_range=(-1,1))
-Y_train = scaler_Y.fit_transform(Y_train.reshape(-1,1))
-Y_test = scaler_Y.transform(Y_test.reshape(-1,1))
+#scaler_Y = MinMaxScaler(feature_range=(-1,1))
+#Y_train = scaler_Y.fit_transform(Y_train.reshape(-1,1))
+#Y_test = scaler_Y.transform(Y_test.reshape(-1,1))
 
 #X_train = X_train.reshape(batch_size,-1,size-1)
 #X_test = X_test.reshape(batch_size,-1,size-1)
@@ -60,8 +60,8 @@ Y_test = scaler_Y.transform(Y_test.reshape(-1,1))
 #Time to convert to PyTorch tensors
 X_train = torch.tensor(X_train,dtype=torch.float32)
 X_test = torch.tensor(X_test,dtype=torch.float32)
-Y_train = torch.tensor(Y_train,dtype=torch.float32)
-Y_test = torch.tensor(Y_test,dtype=torch.float32)
+Y_train = torch.tensor(Y_train,dtype=torch.long)
+Y_test = torch.tensor(Y_test,dtype=torch.long)
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
@@ -133,7 +133,7 @@ class LSTMClassifier(torch.nn.Module):
         return out
 
 #initialize the torch accuracy class
-accuracy = Accuracy(task='binary')
+accuracy = Accuracy(task='binary').to(device)
 
 class PricePredictor(pl.LightningModule):
     def __init__(self,num_features:int,num_classes:int):

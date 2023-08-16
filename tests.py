@@ -38,18 +38,14 @@ print(formatted)
 print(pd.isna(formatted[1]['surprise'].iloc[0]))
 '''
 # Create a sample DataFrame
-data = {'ID': [1, 2, 3],
-        'A': [10, 15, 20],
-        'B': [5, 10, 15],
-        'C': [3, 6, 9]}
+data = {'ID': [1, 2, 3,4,5,6],
+        'A': [10, 15, 20,-14,41,15],
+        'B': [5, 10, 15,12,11,14],
+        'C': [0, 1, 0,0,1,1]}
 
 df = pd.DataFrame(data)
 print(df)
 
-# Calculate the average of values from column 1 onwards for each row
-average_series = df.apply(lambda row: row[1:].mean(), axis=1)
+sorted = fn.sort_by_label(df,"C")
 
-# Convert the average Series back to a DataFrame
-average_df = pd.concat([df.iloc[:,0],pd.DataFrame({'Average': average_series})],axis=1)
-
-print(average_df)
+print(sorted)
