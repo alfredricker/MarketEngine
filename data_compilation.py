@@ -122,7 +122,6 @@ def news_roberta(company,outlet): #pretty much the same as bloomberg init
     #print(df)
     df = df[['Date','Headline_score']]
     #df.reset_index(inplace=True)
-    df = fn.multiple_date_fill(df)
     return df
 
 
@@ -130,27 +129,32 @@ def news_roberta(company,outlet): #pretty much the same as bloomberg init
 def news_formatter(company,symbol,outlets=['bloomberg','marketwatch']):
     df_list = []
     for outlet in outlets:
-        if outlet=='bloomberg':
-            df = news_roberta(symbol,outlet) #bloomberg files are located by the stock ticker
-            df_list.append(df) #bloomberg files are located by their symbol
-        else:
-            df_list.append(news_roberta(company,outlet)) #all others are located by their company name
+        df_list.append(news_roberta(symbol,outlet))
     if len(df_list)>1:
-        df = fn.concatenate_data(df_list)
+        new_list = []
+        for df in df_list:
+            df['Date'] = pd.to_datetime(df['Date'])
+            df = df.sort_values(by='Date')
+            df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')
+            df['Date'] = pd.to_datetime(df['Date'])
+            df.drop(columns=['Summary'],inplace=True) #As of now I'm not using the summary column
+            df.reset_index(inplace=True,drop=True)
+            new_list.append(df)
+        df = pd.concat(new_list,axis=0)
     else:
         df = df_list[0]
     #print(df)
     #collapse all the headline scores into one averaged column
-    average_series = df.apply(lambda row: row[1:].mean(), axis=1)
+    #average_series = df.apply(lambda row: row[1:].mean(), axis=1)
     #print(average_series)
     # Convert the average Series back to a DataFrame
-    average_df = pd.concat([df.iloc[:,0],pd.DataFrame({'Headline': average_series})],axis=1)
-
-    j = average_df.to_json(orient='records',date_format='iso')
+    #average_df = pd.concat([df.iloc[:,0],pd.DataFrame({'Headline': average_series})],axis=1)
+    df = fn.multiple_date_fill(df)
+    j = df.to_json(orient='records',date_format='iso')
     with open(f'data_misc/news_sentiment_{symbol}.dat','w') as file:
         file.write(j)
     print(f'Successfully formatted {symbol} news data')
-    return average_df
+    return df
 
 
 def news_init(symbol):

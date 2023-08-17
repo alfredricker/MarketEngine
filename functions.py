@@ -63,8 +63,8 @@ def datetime_forward_fill(df):
     #this function takes in a pandas data frame and fills in all missing daily values by taking the most recent value
     if not 'Date' in df.columns:
         return print("Error: must have 'Date' column in dataframe")
+    df['Date'] = pd.to_datetime(df['Date'])
     df_sorted = df.sort_values(by='Date')
-    df_sorted['Date'] = pd.to_datetime(df_sorted['Date'])
     currentdate = df_sorted['Date'].iloc[0]
     loc_index = 1
     df_new = df_sorted
@@ -90,8 +90,8 @@ def forward_fill_with_counter(df):
     #this function takes in a pandas data frame and fills in all missing daily values by taking the most recent value
     if not 'Date' in df.columns:
         return print("Error: must have 'Date' column in dataframe")
+    df['Date'] = pd.to_datetime(df['Date'])
     df_sorted = df.sort_values(by='Date')
-    df_sorted['Date'] = pd.to_datetime(df_sorted['Date'])
     currentdate = df_sorted['Date'].iloc[0]
     loc_index = 1
     df_new = df_sorted
@@ -125,8 +125,8 @@ def percent_forward_fill(df):
     #this function takes in a pandas data frame and fills in all missing daily values by taking the most recent value
     if not 'Date' in df.columns:
         return print("Error: must have 'Date' column in dataframe")
+    df['Date'] = pd.to_datetime(df['Date'])
     df_sorted = df.sort_values(by='Date')
-    df_sorted['Date'] = pd.to_datetime(df_sorted['Date'])
     currentdate = df_sorted['Date'].iloc[0]
     loc_index = 1
     #change the data from nominal to percentage
@@ -157,8 +157,9 @@ def multiple_date_fill(df):
     #this function takes in a pandas data frame and fills in all missing daily values by taking the most recent value
     if not 'Date' in df.columns:
         return print("Error: must have 'Date' column in dataframe")
+    df['Date'] = pd.to_datetime(df['Date'])
     df_sorted = df.sort_values(by='Date')
-    df_sorted['Date'] = pd.to_datetime(df_sorted['Date']).dt.date
+    #df_sorted['Date'] = pd.to_datetime(df_sorted['Date']).dt.date
     currentdate = df_sorted['Date'].iloc[0]
     loc_index = 1
     df_new = df_sorted
@@ -189,6 +190,7 @@ def housing_formatter(city):
     with open(f'data_misc/{city}.dat','r') as f:
         f_read = f.read()
     df = pd.read_json(f_read)
+    df['date'] = pd.to_datetime(df['date'])
     df_sorted = df.sort_values(by='date')
     df = pd.DataFrame({'Date':df_sorted['date'],'Value':df_sorted['value']})
     df = df_percent_change(df,'Value')
@@ -234,25 +236,36 @@ def get_df_date_extrema(df_list):
 
 
 #properly reads and formats the pd dataframe, forward fills the data, and splits data into a [price,volume] data list
-def equity_formatter(symbol,nominal=False):
-    with open(f'data_equity/{symbol}.dat','r') as file:
+def equity_formatter(symbol,nominal=False,api='yfinance'):
+    with open(f'data_equity/{symbol}.dat','r') as file: #open the necessary equity file
         d = file.read()
-    j = json.loads(d)
-    dat = j['Time Series (Daily)'] #get rid of the MetaData classifier in the json file
-    df = pd.DataFrame(dat).T #create a dataframe and transpose it
-    df.reset_index(inplace=True) #this line makes it so that the date becomes an accessible column rather than the index
-    column_names = ['Date','Open','High','Low','Close','Volume']
-    df.columns = column_names #rename the columns
-    #split volume df and price data
-    volume_df = df[['Date','Volume']]
-    volume_df = datetime_forward_fill(volume_df)
-    price_df = df[['Date','Close']] #I just want close for the first trial of this. I will come back and do stuff with high and low data as well
+
+    if api == 'yfinance':
+        df = pd.read_json(d)
+        price_df = df[['Date','Adj Close']]
+        price_df = price_df.rename(columns={'Adj Close':'Close'}) #I want the adjusted closing price
+        volume_df = df[['Date','Volume']]
+    elif api=='alphavantage':
+        j = json.loads(d)
+        dat = j['Time Series (Daily)'] #get rid of the MetaData classifier in the json file
+        df = pd.DataFrame(dat).T #create a dataframe and transpose it
+        df.reset_index(inplace=True) #this line makes it so that the date becomes an accessible column rather than the index
+        column_names = ['Date','Open','High','Low','Close','Volume']
+        df.columns = column_names #rename the columns
+        #split volume df and price data
+        volume_df = df[['Date','Volume']]
+        price_df = df[['Date','Close']] #I just want close for the first trial of this. I will come back and do stuff with high and low data as well
+    else:
+        print("Equity formatter error: supported APIs: yfinance, alphavantage")
+
     if nominal == False:    
         price_df = percent_forward_fill(price_df)
     elif nominal == True:
         price_df = datetime_forward_fill(price_df)
     else:
         print("Error in functions.py: Equity formatter error!")
+
+    volume_df = datetime_forward_fill(volume_df)
 
     print(f'Successfully formatted {symbol} data')
     return [price_df,volume_df]

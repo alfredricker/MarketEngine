@@ -34,7 +34,7 @@ def get_news_sentiment(symbol:str):
 
 
 #history only goes as far back as 2016. I will probel have to integrate this into a different neural network that also utilizes a news sentiment model.
-def get_retail_sentiment(symbol:str):    
+def get_retail_sentiment(symbol:str,increment:int=20):    
     start_date = datetime(2016,1,1)
     #I have to make a list because the quandl api is annoying and calls by either a single date or an enumerated list of dates.
     #calling by each date individually takes a really long time so I have to go with this route
@@ -46,16 +46,16 @@ def get_retail_sentiment(symbol:str):
     current_date = start_date
 
     #I probably could have just made an empty data frame and left this code in the loop
-    date_string = day_string(current_date,20)
+    date_string = day_string(current_date,increment)
     df = quandl.get_table('NDAQ/RTAT10', date=date_string, ticker=symbol)
-    current_date = current_date + timedelta(days=20)
+    current_date = current_date + timedelta(days=increment)
     df = pd.DataFrame(df)
 
     while current_date+timedelta(days=5) < end_date:
-        date_string = day_string(current_date,20)
+        date_string = day_string(current_date,increment)
         data = quandl.get_table('NDAQ/RTAT10', date=date_string, ticker=symbol)
         data = pd.DataFrame(data)
-        current_date = current_date + timedelta(days=20)
+        current_date = current_date + timedelta(days=increment)
         print(current_date)
         df = pd.concat([df,data],axis=0,ignore_index=True)
 
@@ -81,10 +81,8 @@ def balance_sheet_formatter(symbol:str):
     
 #get_balance_sheet(symbol)
 #balance_sheet_formatter(symbol)
-#get_earnings('TSLA')
-#get_earnings('META')
-#get_earnings('GOOG')
-#get_earnings('AMD')
-get_retail_sentiment('F')
+
+get_retail_sentiment('DELL',increment=1)
+#get_earnings('DIS')
 
 

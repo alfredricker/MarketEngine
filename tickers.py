@@ -6,7 +6,23 @@ import pandas as pd
 import torch
 from datetime import datetime, timedelta
 
+#gets closing prices from yfinance
+def get_equity_data(symbol,start_date='2000-01-01',end_date='2023-06-01'):
+    data = yf.download(symbol,start=start_date,end=end_date)
+    df = pd.DataFrame(data)
+    df.reset_index(inplace=True)
+    j = df.to_json(orient='records',date_format='iso')
+    with open(f'data_equity/{symbol}.dat', 'w') as file:
+        file.write(j)
+
+get_equity_data('AAL')
+get_equity_data('DELL')
+get_equity_data('UPS')
+
+
+
 #create a list of tickers from csv data frame
+'''
 df = pd.read_csv("nasdaq_screener.csv")
 df_sorted = df.sort_values(by='Volume',ascending=False)
 n = 500
@@ -27,7 +43,6 @@ for i in range(36,41):
     except:
         print("An error occured: could not request AlphaVantage data")
 
-'''
 for tick in ticker_list:
     url="https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=" + tick + "&outputsize=full&apikey=1C3O71BAB7HJXTWZ"
     r=requests.get(url)
