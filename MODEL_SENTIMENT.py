@@ -60,7 +60,7 @@ X_test = scaler_X.transform(X_test)
 #Time to convert to PyTorch tensors
 X_train = torch.tensor(X_train,dtype=torch.float32)
 X_test = torch.tensor(X_test,dtype=torch.float32)
-Y_train = torch.tensor(Y_train,dtype=torch.long)
+Y_train = torch.tensor(Y_train,dtype=torch.long) #need to use long datatype for classifiers
 Y_test = torch.tensor(Y_test,dtype=torch.long)
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
@@ -128,7 +128,7 @@ class LSTMClassifier(torch.nn.Module):
         #batch_size = x.size(0)
         #h0 = torch.zeros(self.num_stacked_layers, batch_size, self.hidden_size).to(device)
         #c0 = torch.zeros(self.num_stacked_layers, batch_size, self.hidden_size).to(device)
-        out, _ = self.lstm(x) #(h0, c0))
+        out, _ = self.lstm(x) #(h0, c0)) #I'm referencing a point, not a tensor
         out = self.classifier(out)
         return out
 
