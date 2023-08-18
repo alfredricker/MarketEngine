@@ -10,8 +10,8 @@ def open_news_data(symbol,outlet):
         r = file.read()
     df = pd.read_json(r)
     return df
-df_list.append(open_news_data('BAC','bloomberg'))
-df_list.append(open_news_data('BAC','marketwatch'))
+df_list.append(open_news_data('AAL','bloomberg'))
+df_list.append(open_news_data('AAL','marketwatch'))
 
 count = 1
 new_list = []

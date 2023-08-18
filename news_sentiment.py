@@ -110,7 +110,7 @@ def get_reuters_data(company,max_offset:int=50):
 
 
 #looks like I can only get data as far back as 2020... so I'm not going to use marketwatch. #time_interval is the gap between days that the api processes
-def get_marketwatch_data(company,start_date:datetime=datetime(2016,1,1),end_date:datetime=datetime(2023,5,1),time_interval:int = 1):
+def get_marketwatch_data(company,start_date:datetime=datetime(2016,1,1),end_date:datetime=datetime(2023,6,1),time_interval:int = 1, file_method='w'):
     data = {'Date':[],'Headline':[],'Summary':[]}
     indexer = 0
     #iterate through 2 days at a time
@@ -174,11 +174,11 @@ def get_marketwatch_data(company,start_date:datetime=datetime(2016,1,1),end_date
         indexer+=1
         if indexer%20==0:
             print(indexer)
-        current_date = current_date + timedelta(days=2) #have to increment by 2 days because I'm getting two days worth of data at a time
+        current_date = current_date + timedelta(days=time_interval+1) #have to increment by 2 days because I'm getting two days worth of data at a time
 
     df = pd.DataFrame(data)
     j = df.to_json(orient='records',date_format='iso')
-    with open(f'web_scraping/{company}_marketwatch.dat','w') as file:
+    with open(f'web_scraping/{company}_marketwatch.dat',f'{file_method}') as file:
         file.write(j)    
 
 
@@ -314,5 +314,4 @@ def get_cnbc_data(company, scroll: int = 30):
 #get_cnbc_data('apple',scroll=60)
 #get_marketwatch_data('apple')
 #get_bloomberg_data('AAL',max_page=50)
-get_marketwatch_data('ROKU')
-get_bloomberg_data('ROKU')
+get_marketwatch_data('DELL',start_date=datetime(2023,3,22),end_date=datetime(2023,6,1),time_interval=2,file_method='a')

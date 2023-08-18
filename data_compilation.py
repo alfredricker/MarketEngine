@@ -126,7 +126,7 @@ def news_roberta(company,outlet): #pretty much the same as bloomberg init
 
 
 #the news_init function takes a while so I'm going to initialize one at a time and save them to dat files.
-def news_formatter(company,symbol,outlets=['bloomberg','marketwatch']):
+def news_formatter(symbol,outlets=['bloomberg','marketwatch'],start_date=pd.Timestamp('2016-01-01'), end_date=pd.Timestamp('2023-06-01')):
     df_list = []
     for outlet in outlets:
         df_list.append(news_roberta(symbol,outlet))
@@ -135,9 +135,11 @@ def news_formatter(company,symbol,outlets=['bloomberg','marketwatch']):
         for df in df_list:
             df['Date'] = pd.to_datetime(df['Date'])
             df = df.sort_values(by='Date')
+            df = df[df['Date'] >= start_date] #filter out unwanted dates
+            df = df[df['Date'] <= end_date]
             df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')
             df['Date'] = pd.to_datetime(df['Date'])
-            df.drop(columns=['Summary'],inplace=True) #As of now I'm not using the summary column
+            #df.drop(columns=['Summary'],inplace=True) #This is already done in news_roberta
             df.reset_index(inplace=True,drop=True)
             new_list.append(df)
         df = pd.concat(new_list,axis=0)
@@ -190,4 +192,5 @@ def sentiment_init(stocks_list,companies_list):
 
 #sentiment_init(retail_stocks,retail_companies)
 #equity_init(model_stocks,model_companies)
-news_formatter('ford','F',outlets=['marketwatch'])
+news_formatter('AAL')
+news_formatter('AAPL')
