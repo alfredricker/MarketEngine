@@ -7,6 +7,7 @@ import time
 from selenium import webdriver
 import re
 import requests
+import functions as fn
 
 #for the marketwatch function
 class IntervalDate:
@@ -310,8 +311,87 @@ def get_cnbc_data(company, scroll: int = 30):
 
     driver.quit()
 
+#------------------------------------------------------------------------------
+
+#HUGGING FACE PRE TRAINED SENTIMENT MODEL
+from transformers import AutoTokenizer,AutoModelForSequenceClassification
+from scipy.special import softmax
+
+#this model is specifically trained for financial news sentiment.
+MODEL = f"mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis"
+tokenizer = AutoTokenizer.from_pretrained(MODEL)
+model = AutoModelForSequenceClassification.from_pretrained(MODEL)
+
+
+def roberta_sentiment(sentence:str):
+    encoded_text = tokenizer(sentence,return_tensors='pt')
+    output = model(**encoded_text)
+    scores = output[0][0].detach().numpy() #returns sentiment scores as a np array of the form [neg,neutral,pos]
+    scores = softmax(scores)
+    #lets return one number in the range (-1,1), -1 being as negative as possible and 1 being as positive as possible
+    sentiment = scores[0]*(-1.) + scores[1]*0. + scores[2]*1.
+    return sentiment
+
+
+def news_roberta(company,outlet): #pretty much the same as bloomberg init
+    with open(f'web_scraping/{company}_{outlet}.dat','r') as file:
+        r = file.read()
+    data = pd.read_json(r)
+    data['Date'] = pd.to_datetime(data['Date'])
+    data = data.sort_values(by='Date', axis=0)
+    sentiment_df = {'Headline_score':[]}
+    for index in data.index:
+        headline_score = roberta_sentiment(data['Headline'].iloc[index])
+        #summary_score = roberta_sentiment(data['Summary'].iloc[index])
+        sentiment_df['Headline_score'].append(headline_score)
+        #sentiment_df['Summary_score'].append(summary_score)
+    sentiment_df = pd.DataFrame(sentiment_df)
+    #print(sentiment_df)
+    df = pd.concat([data,sentiment_df],axis=1)
+    #print(df)
+    df = df[['Date','Headline_score']]
+    #df.reset_index(inplace=True)
+    return df
+
+
+#the news_init function takes a while so I'm going to initialize one at a time and save them to dat files.
+def news_formatter(symbol,outlets=['bloomberg','marketwatch'],start_date=pd.Timestamp('2016-01-01'), end_date=pd.Timestamp('2023-06-01')):
+    df_list = []
+    for outlet in outlets:
+        df_list.append(news_roberta(symbol,outlet))
+    if len(df_list)>1:
+        new_list = []
+        for df in df_list:
+            df['Date'] = pd.to_datetime(df['Date'])
+            df = df.sort_values(by='Date')
+            df = df[df['Date'] >= start_date] #filter out unwanted dates
+            df = df[df['Date'] <= end_date]
+            df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')
+            df['Date'] = pd.to_datetime(df['Date'])
+            #df.drop(columns=['Summary'],inplace=True) #This is already done in news_roberta
+            df.reset_index(inplace=True,drop=True)
+            new_list.append(df)
+        df = pd.concat(new_list,axis=0)
+    else:
+        df = df_list[0]
+    #print(df)
+    #collapse all the headline scores into one averaged column
+    #average_series = df.apply(lambda row: row[1:].mean(), axis=1)
+    #print(average_series)
+    # Convert the average Series back to a DataFrame
+    #average_df = pd.concat([df.iloc[:,0],pd.DataFrame({'Headline': average_series})],axis=1)
+    df = fn.multiple_date_fill(df)
+    j = df.to_json(orient='records',date_format='iso')
+    with open(f'data_misc/news_sentiment_{symbol}.dat','w') as file:
+        file.write(j)
+    print(f'Successfully formatted {symbol} news data')
+    return df
+
 
 #get_cnbc_data('apple',scroll=60)
 #get_marketwatch_data('apple')
 #get_bloomberg_data('AAL',max_page=50)
-get_marketwatch_data('DELL',start_date=datetime(2023,3,22),end_date=datetime(2023,6,1),time_interval=2,file_method='a')
+#get_marketwatch_data('ROKU',start_date=datetime(2022,2,19),end_date=datetime(2023,6,1),time_interval=2,file_method='a')
+symbol_list = ['AAPL','AAPL','AMD','AMZN','BAC','CGNX','DELL','DIS','F','GOOG','INTC','MSFT','NFLX','NVDA','ROKU','TSLA']
+for symbol in symbol_list:
+    news_formatter(symbol)

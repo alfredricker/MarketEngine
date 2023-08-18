@@ -4,7 +4,7 @@ import pandas as pd
 import torch
 import requests
 import json
-import datetime
+from datetime import datetime
 from datetime import timedelta
 import functions as fn
 
@@ -21,10 +21,8 @@ def form_two_columns(row):
 
 #input the company name and the stock symbol of that company
 #I'll make the start date june 2004
-def get_search_trend_data(company):
+def get_search_trend_data(company,start_date=datetime(2004,6,1),end_date=datetime(2023,6,1),file_method='w'):
     kw_list = [company]
-    start_date = datetime.datetime(2004,6,1)
-    end_date = datetime.datetime(2022,6,1)
     current_date = start_date
     dataframe = {'Date':[],'Value':[]}
 
@@ -46,7 +44,7 @@ def get_search_trend_data(company):
     trend_json = df.to_json(orient='records',date_format='iso')
     trend_json.strip('[]')
     trend_load = json.loads(trend_json)
-    with open(f'data_misc/trend_{company}.dat','w') as file:
+    with open(f'data_misc/trend_{company}.dat',file_method) as file:
         json.dump(trend_load,file)
     return trend_load
 
@@ -60,5 +58,4 @@ n = 10
 #reduce the list to the tickers with the n highest volume
 company_list = [s for s in df_sorted.head(n)['Name']]
 #print(company_list)
-get_search_trend_data('Microsoft')
-get_search_trend_data('AT&T')
+get_search_trend_data('ROKU')

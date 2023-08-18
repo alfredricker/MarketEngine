@@ -7,13 +7,11 @@ from datetime import datetime
 
 #MODEL STOCKS
 #stocks currently in the model. It is import that these two lists are aligned ticker:company
-model_stocks = ['AAPL','AMD','TSLA','F','GOOG','TUP','MSFT','NVDA','T','AMZN','META']
-model_companies = ['Apple','AMD','Tesla','Ford','Google','TUP','Microsoft','Nvidia','AT&T','Amazon','Facebook']
 retail_stocks = ['AAPL','AMD','AMZN','MSFT','NVDA','TSLA']
 retail_companies = ['Apple','AMD','Amazon','Microsoft','Nvidia','Tesla']
 #TREND DATA
-def trend_init(company:str):
-    with open(f'data_misc/trend_{company}.dat', 'r') as file:
+def trend_init(symbol:str):
+    with open(f'data_misc/trend_{symbol}.dat', 'r') as file:
         data = file.read()
     trend_df = pd.read_json(data)
     return trend_df
@@ -54,7 +52,7 @@ print("Initialized housing data")
 
 #EQUITY/TARGET DATA
 #surprise column contains a NaN value which interrupts the model as of now.
-def equity_init(stocks_list,companies_list):
+def equity_init(stocks_list):
     df_list = [] #list of data frames that will be concatenated by row at the end of the function
 
     for i in range(len(stocks_list)):    
@@ -65,7 +63,7 @@ def equity_init(stocks_list,companies_list):
         stock_volume = stock[1]
         stock_rsi = fn.calculate_rsi(stock_sym)
         
-        stock_trend = trend_init(companies_list[i])
+        stock_trend = trend_init(stock_sym)
         stock_earnings = fn.earnings_formatter(stock_sym)
         stock_reported_eps = stock_earnings[0]
         stock_surprise_eps = stock_earnings[1]
@@ -85,80 +83,6 @@ def equity_init(stocks_list,companies_list):
 #IMPORTANT: since I want to look at how the present day data effects the closing price of tomorrow, I have to copy the close column, and shift it up 1 position in a new row
 
 
-#HUGGING FACE PRE TRAINED SENTIMENT MODEL
-from transformers import AutoTokenizer,AutoModelForSequenceClassification
-from scipy.special import softmax
-
-MODEL = f"cardiffnlp/twitter-roberta-base-sentiment"
-tokenizer = AutoTokenizer.from_pretrained(MODEL)
-model = AutoModelForSequenceClassification.from_pretrained(MODEL)
-
-
-def roberta_sentiment(sentence:str):
-    encoded_text = tokenizer(sentence,return_tensors='pt')
-    output = model(**encoded_text)
-    scores = output[0][0].detach().numpy() #returns sentiment scores as a np array of the form [neg,neutral,pos]
-    scores = softmax(scores)
-    #lets return one number in the range (-1,1), -1 being as negative as possible and 1 being as positive as possible
-    sentiment = scores[0]*(-1.) + scores[1]*0. + scores[2]*1.
-    return sentiment
-
-
-def news_roberta(company,outlet): #pretty much the same as bloomberg init
-    with open(f'web_scraping/{company}_{outlet}.dat','r') as file:
-        r = file.read()
-    data = pd.read_json(r)
-    data['Date'] = pd.to_datetime(data['Date'])
-    data = data.sort_values(by='Date', axis=0)
-    sentiment_df = {'Headline_score':[]}
-    for index in data.index:
-        headline_score = roberta_sentiment(data['Headline'].iloc[index])
-        #summary_score = roberta_sentiment(data['Summary'].iloc[index])
-        sentiment_df['Headline_score'].append(headline_score)
-        #sentiment_df['Summary_score'].append(summary_score)
-    sentiment_df = pd.DataFrame(sentiment_df)
-    #print(sentiment_df)
-    df = pd.concat([data,sentiment_df],axis=1)
-    #print(df)
-    df = df[['Date','Headline_score']]
-    #df.reset_index(inplace=True)
-    return df
-
-
-#the news_init function takes a while so I'm going to initialize one at a time and save them to dat files.
-def news_formatter(symbol,outlets=['bloomberg','marketwatch'],start_date=pd.Timestamp('2016-01-01'), end_date=pd.Timestamp('2023-06-01')):
-    df_list = []
-    for outlet in outlets:
-        df_list.append(news_roberta(symbol,outlet))
-    if len(df_list)>1:
-        new_list = []
-        for df in df_list:
-            df['Date'] = pd.to_datetime(df['Date'])
-            df = df.sort_values(by='Date')
-            df = df[df['Date'] >= start_date] #filter out unwanted dates
-            df = df[df['Date'] <= end_date]
-            df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')
-            df['Date'] = pd.to_datetime(df['Date'])
-            #df.drop(columns=['Summary'],inplace=True) #This is already done in news_roberta
-            df.reset_index(inplace=True,drop=True)
-            new_list.append(df)
-        df = pd.concat(new_list,axis=0)
-    else:
-        df = df_list[0]
-    #print(df)
-    #collapse all the headline scores into one averaged column
-    #average_series = df.apply(lambda row: row[1:].mean(), axis=1)
-    #print(average_series)
-    # Convert the average Series back to a DataFrame
-    #average_df = pd.concat([df.iloc[:,0],pd.DataFrame({'Headline': average_series})],axis=1)
-    df = fn.multiple_date_fill(df)
-    j = df.to_json(orient='records',date_format='iso')
-    with open(f'data_misc/news_sentiment_{symbol}.dat','w') as file:
-        file.write(j)
-    print(f'Successfully formatted {symbol} news data')
-    return df
-
-
 def news_init(symbol):
     with open(f'data_misc/news_sentiment_{symbol}.dat','r') as file:
         r = file.read()
@@ -166,18 +90,18 @@ def news_init(symbol):
     return df
 
 
-def sentiment_init(stocks_list,companies_list):
+def sentiment_init(stocks_list):
     df_list = []    
     for i in range(len(stocks_list)):
-        retail_df = fn.retail_sentiment_formatter(stocks_list[i])
+        #retail_df = fn.retail_sentiment_formatter(stocks_list[i])
         news_sentiment = news_init(stocks_list[i])
-        stock_trend = trend_init(companies_list[i])
+        stock_trend = trend_init(stocks_list[i])
 
         stock = fn.equity_formatter(stocks_list[i])
         stock_close = stock[0]
         stock_rsi = fn.calculate_rsi(stocks_list[i])
 
-        data_list = [stock_close,stock_trend,retail_df,news_sentiment,stock_rsi]
+        data_list = [stock_close,stock_trend,news_sentiment,stock_rsi]
         df = fn.concatenate_data(data_list)
         df['Close_Tmr'] = df['Close'].shift(-1)
         df = df.drop(index=df.index[-1]) #drop the last row because the above shift method will result in NaN values
@@ -192,5 +116,6 @@ def sentiment_init(stocks_list,companies_list):
 
 #sentiment_init(retail_stocks,retail_companies)
 #equity_init(model_stocks,model_companies)
-news_formatter('AAL')
-news_formatter('AAPL')
+model_stocks = ['AAL','AAPL','AMD','AMZN','BAC','CGNX','DELL','DIS',
+                'INTC','TSLA','F','GOOG','MSFT','NVDA','NFLX']
+sentiment_init(model_stocks)
