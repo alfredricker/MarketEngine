@@ -50,6 +50,12 @@ la = housing_init('LosAngeles')
 chicago = housing_init('Chicago')
 print("Initialized housing data")
 
+def insider_init(symbol:str):
+    with open(f'data_misc/insider_{symbol}.dat','r') as file:
+        r = file.read()
+    data = pd.read_json(r)
+    return data
+
 #EQUITY/TARGET DATA
 #surprise column contains a NaN value which interrupts the model as of now.
 def equity_init(stocks_list):
@@ -94,14 +100,23 @@ def sentiment_init(stocks_list):
     df_list = []    
     for i in range(len(stocks_list)):
         #retail_df = fn.retail_sentiment_formatter(stocks_list[i])
-        news_sentiment = news_init(stocks_list[i])
-        stock_trend = trend_init(stocks_list[i])
+        sym = stocks_list[i]
+        news_sentiment = news_init(sym)
+        stock_trend = trend_init(sym)
 
-        stock = fn.equity_formatter(stocks_list[i])
+        stock = fn.equity_formatter(sym)
         stock_close = stock[0]
-        stock_rsi = fn.calculate_rsi(stocks_list[i])
+        stock_volume = stock[1]
+        stock_rsi = fn.calculate_rsi(sym)
 
-        data_list = [stock_close,stock_trend,news_sentiment,stock_rsi]
+        insider = insider_init(sym)
+
+        stock_earnings = fn.earnings_formatter(sym)
+        stock_reported_eps = stock_earnings[0]
+        stock_surprise_eps = stock_earnings[1]
+
+        data_list = [stock_close,stock_volume,stock_reported_eps,stock_surprise_eps,
+                     stock_trend,news_sentiment,stock_rsi,insider,dff]
         df = fn.concatenate_data(data_list)
         df['Close_Tmr'] = df['Close'].shift(-1)
         df = df.drop(index=df.index[-1]) #drop the last row because the above shift method will result in NaN values
@@ -116,6 +131,6 @@ def sentiment_init(stocks_list):
 
 #sentiment_init(retail_stocks,retail_companies)
 #equity_init(model_stocks,model_companies)
-model_stocks = ['AAL','AAPL','AMD','AMZN','BAC','CGNX','DELL','DIS',
-                'INTC','TSLA','F','GOOG','MSFT','NVDA','NFLX']
+model_stocks = ['AAL','AAPL','AMD','AMZN','BAC','BRK-B','CGNX','DELL','DIS',
+                'INTC','TSLA','F','GOOG','MSFT','NVDA','NFLX','WMT']
 sentiment_init(model_stocks)

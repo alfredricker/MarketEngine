@@ -390,8 +390,10 @@ def news_formatter(symbol,outlets=['bloomberg','marketwatch'],start_date=pd.Time
 
 #get_cnbc_data('apple',scroll=60)
 #get_marketwatch_data('apple')
-get_bloomberg_data('WMT',max_page=50)
-get_marketwatch_data('WMT')
+#get_bloomberg_data('MCD',max_page=50)
+#get_marketwatch_data('GE',start_date=datetime(2021,1,2),end_date=datetime(2022,1,1),file_method='a')
 #symbol_list = ['AAPL','AAPL','AMD','AMZN','BAC','CGNX','DELL','DIS','F','GOOG','INTC','MSFT','NFLX','NVDA','ROKU','TSLA']
 #for symbol in symbol_list:
 #    news_formatter(symbol)
+news_formatter('WMT')
+news_formatter('BRK-B')
