@@ -153,7 +153,7 @@ def percent_forward_fill(df):
 
 
 #this function is the same as datetime forward fill except it averages the values of duplicate dates
-def multiple_date_fill(df):
+def multiple_date_fill(df,target_column=None):
     #this function takes in a pandas data frame and fills in all missing daily values by taking the most recent value
     if not 'Date' in df.columns:
         return print("Error: must have 'Date' column in dataframe")
@@ -178,8 +178,14 @@ def multiple_date_fill(df):
                 new_row[column] = df_sorted[column].iloc[loc_index-1]
             df_new = pd.concat([df_new,pd.DataFrame([new_row])],ignore_index=True)
             currentdate = inc_date
+
     df_new = df_new.sort_values(by='Date')
-    mean_column = df_new.columns[1] #column to take the mean of
+    
+    if target_column is None:
+        mean_column = df_new.columns[1] #column to take the mean of
+    else:
+        mean_column = target_column
+        
     df_new = df_new.groupby('Date')[mean_column].mean().reset_index()
     return df_new
 

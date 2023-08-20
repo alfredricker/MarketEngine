@@ -54,7 +54,8 @@ def insider_init(symbol:str):
     with open(f'data_misc/insider_{symbol}.dat','r') as file:
         r = file.read()
     data = pd.read_json(r)
-    return data
+    df = fn.multiple_date_fill(data)
+    return df
 
 #EQUITY/TARGET DATA
 #surprise column contains a NaN value which interrupts the model as of now.

@@ -7,7 +7,7 @@ import pandas as pd
 cik = {'AAL':6201,'AAPL':320193,'AMD':2488,
        'AMZN':1018724,'BAC':70858,'BRK-B':1067983,'CGNX':851205,
        'DELL':1571996,'DIS':1744489,'F':37996,'GE':40545,
-       'GOOG':1652044,'INTC':50863,'MCD':63908,'META':1326801,'NFLX':1065280,
+       'GOOG':1652044,'INTC':50863,'MCD':63908,'META':1326801,'MLM':916076,'NFLX':1065280,
        'NVDA':1045810,'ROKU':1428439,'SBUX':829224,'SHOP':1594805,
        'T':732717,'TGT':27419,'TSLA':1318605,'WMT':104169}
 
@@ -34,7 +34,12 @@ def get_insider_trading_data(symbol:str,max_page:int=6):
             buy_or_sell = data[0].text.strip()
             date = data[1].text.strip()
 
-            f_in_kind = data[5].text.strip()
+            code = data[5].text.strip()
+            if not (code.startswith('P') 
+                    or code.startswith('S') 
+                    or code.startswith('A') 
+                    or code.startswith('F')):
+                continue
 
             first_number = float(data[7].text.strip())
             second_number = float(data[8].text.strip())

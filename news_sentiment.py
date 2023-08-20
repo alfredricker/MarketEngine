@@ -268,6 +268,43 @@ def get_barrons_data(company,max_page:int=60):
         file.write(j)
 
 
+def get_seekingalpha_analysis(symbol,start_date=datetime(2010,1,1),end_date=datetime(2023,6,1),time_interval=20,file_method='w'):
+    data = {'Date':[],'Headline':[]}
+    current_date = start_date
+    next_date = current_date + timedelta(days=time_interval+1)
+
+    while next_date < end_date:
+        current_str = current_date.strftime('%Y-%m-%d')
+        next_str = next_date.strftime('%Y-%m-%d')
+        url = f'https://seekingalpha.com/symbol/{symbol}/analysis?from={current_str}T05%3A00%3A00.000Z&to={next_str}T03%3A59%3A59.999Z'
+        response = requests.get(url)
+        html_content = response.content
+        soup = BeautifulSoup(html_content, "html.parser")
+        post_list_div = soup.find('div', {'data-test-id': 'post-list'})
+
+        # Find all the 'article' elements within the 'post-list' div
+        articles = post_list_div.find_all('article', {'data-test-id': 'post-list-item'})
+
+        # Iterate through the articles and extract title and date
+        for article in articles:
+            title_element = article.find('a', {'data-test-id': 'post-list-item-title'})
+            date_element = article.find('span', {'data-test-id': 'post-list-date'})
+            
+            if title_element and date_element:
+                title = title_element.text.strip()
+                date = date_element.text.strip()
+                data['Date'].append(date)
+                data['Headline'].append(title)
+
+        current_date = next_date
+        next_date = next_date + timedelta(days=time_interval+1)
+
+    df = pd.DataFrame(data)
+    j = df.to_json(orient='records',date_format='iso')
+    with open(f'web_scraping/{symbol}_seekingalpha.dat',file_method) as file:
+        file.write(j)
+
+
 def get_cnbc_data(company, scroll: int = 30):
     options = webdriver.ChromeOptions()
     options.add_argument('--headless')  # Run Chrome in headless mode (no UI)
@@ -395,5 +432,6 @@ def news_formatter(symbol,outlets=['bloomberg','marketwatch'],start_date=pd.Time
 #symbol_list = ['AAPL','AAPL','AMD','AMZN','BAC','CGNX','DELL','DIS','F','GOOG','INTC','MSFT','NFLX','NVDA','ROKU','TSLA']
 #for symbol in symbol_list:
 #    news_formatter(symbol)
-news_formatter('WMT')
-news_formatter('BRK-B')
+#news_formatter('WMT')
+#news_formatter('BRK-B')
+get_seekingalpha_analysis('AMD',start_date=datetime(2015,4,1),end_date=datetime(2015,6,1))
