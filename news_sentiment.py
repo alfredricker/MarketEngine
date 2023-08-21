@@ -9,7 +9,6 @@ import re
 import requests
 import functions as fn
 import subprocess
-import wmi
 
 
 #for the marketwatch function
@@ -30,6 +29,32 @@ class IntervalDate:
     def get_next_date(self):
         next_date = self.current_date + timedelta(days=self.time_interval)
         return self._get_formatted_date(next_date)
+    
+
+
+def terminate_and_run_proton(path,terminate=True,run=True):
+    protonvpn_path = path
+    connect_command = [protonvpn_path]
+
+    kill_command = 'taskkill /IM ProtonVPN.exe /F'
+    kill_background = 'taskkill /F /IM ProtonVPN.WireGuardService.exe'
+    kill_service = 'taskkill /F /IM ProtonVPNService.exe'
+
+    if terminate:
+        subprocess.run(kill_command)
+        subprocess.run(kill_service)
+        subprocess.run(kill_background)
+        time.sleep(12)
+        print('Successful termination')
+    if run:
+        # Start the VPN connection process
+        vpn_process = subprocess.Popen(connect_command)
+        time.sleep(35)  # Wait for the connection to establish
+        print('Connected to VPN')
+
+    # Optionally, keep the VPN connection process running
+    #if vpn_process:
+    #    vpn_process.wait()  # Wait for the process to complete
 
 
 
@@ -60,9 +85,12 @@ def get_bloomberg_data(symbol,max_page:int=30):
         'tracestate': '25300@nr=0-1-1982697-140952798-b27896ae4d3b4dba----1691629514517',
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
         }
-
-        response = requests.request("GET", url, headers=headers, data=payload)
-        j = response.json()
+        try:
+            response = requests.request("GET", url, headers=headers, data=payload)
+            j = response.json()
+        except:
+            time.sleep(5)
+            continue
         try:
             for result in j["results"]:
                 df['Date'].append(result["publishedAt"])
@@ -128,7 +156,8 @@ def get_marketwatch_data(company,start_date:datetime=datetime(2016,1,1),end_date
     indexer = 0
     #iterate through 2 days at a time
     current_date = start_date
-
+    counter = 0
+    terminate_and_run_proton(r"D:\Program Files (x86)\Proton Technologies\ProtonVPN\ProtonVPN.exe",terminate=False)
     while current_date<=end_date:
         current_year,current_month,current_day = IntervalDate(current_date,time_interval).get_current_date()
         next_year,next_month,next_day = IntervalDate(current_date,time_interval).get_next_date()
@@ -140,7 +169,7 @@ def get_marketwatch_data(company,start_date:datetime=datetime(2016,1,1),end_date
         'authority': 'www.marketwatch.com',
         'accept': '*/*',
         'accept-language': 'en-US,en;q=0.9',
-        'cookie': 'optimizelyEndUserId=oeu1691638315857r0.7087681223582081; ccpaApplies=true; ccpaUUID=f1b52e2b-831e-4661-a601-26f45b9c22e3; ab_uuid=2bb6b0db-e60c-4a58-8c6f-1a7ffe71c69d; AMCVS_CB68E4BA55144CAA0A4C98A5%40AdobeOrg=1; _cls_v=71b4337b-4d2a-4857-8ab9-25e547a46069; _cls_s=cb9ce4cd-7044-42e8-b7e0-997bafce5259:0; _pcid=%7B%22browserId%22%3A%22ll4lrzf3xsz5befm%22%7D; cX_P=ll4lrzf3xsz5befm; _pctx=%7Bu%7DN4IgrgzgpgThIC4B2YA2qA05owMoBcBDfSREQpAeyRCwgEt8oBJAEzIE4AmHgZi4CsvAIwB2DqIAMADkHTRvEAF8gA; s_ecid=MCMID%7C07811295556865454993086478630926961519; s_cc=true; _uetvid=758743f0372e11eeaf7773af3d00e586; _rdt_uuid=1691638317494.509efc6d-b206-4dad-ab21-fa1245ae3898; _gcl_aw=GCL.1691638318.CjwKCAjw8symBhAqEiwAaTA__Ory9tIPdbQkDnXN5UtbxHrw9yWDTdXcRgrZFKSNTkdxN0A8UQViuBoCVrgQAvD_BwE; _gcl_au=1.1.1194856486.1691638318; cX_G=cx%3Aaay94xhyxbv11gicm2zvcbs06%3A118c0xph4rjn9; permutive-id=6c6c2bca-c05c-4138-88d6-6e1f360c4fc5; mw_loc=%7B%22Region%22%3A%22CA%22%2C%22Country%22%3A%22US%22%2C%22Continent%22%3A%22NA%22%2C%22ApplicablePrivacy%22%3A0%7D; fullcss-home=site-60d04d1451.min.css; icons-loaded=true; pushly.user_puuid=KjxevIlduSipjWShxOsKVchz9Kkg0XwA; letsGetMikey=enabled; dnsDisplayed=false; signedLspa=false; _pubcid=264ea218-4b67-4419-bbe9-75518d56c802; _ncg_domain_id_=1a8cf395-3657-4492-be2f-7e6cb4e543a6.1.1691638334184.1754710334184; _fbp=fb.1.1691638335144.1497534032; _dj_sp_id=e5a66968-eecf-41a1-a2f3-f6bb63e46721; _pcus=eyJ1c2VyU2VnbWVudHMiOm51bGx9; s_sq=djglobal%252Cdjwsj%3D%2526pid%253Dhttps%25253A%25252F%25252Fwww.marketwatch.com%25252F%2526oid%253D%25250A%252520%252520%252520%252520%252520%252520%2526oidt%253D3%2526ot%253DSUBMIT; fullcss-quote=quote-ccd11d2396.min.css; recentqsmkii=Stock-US-AAPL; _lr_env_src_ats=false; fullcss-section=section-15f53c310c.min.css; consentUUID=67c2a1aa-b753-49dc-a1af-16e72cc55240_22; _ncg_id_=1a8cf395-3657-4492-be2f-7e6cb4e543a6; AMCV_CB68E4BA55144CAA0A4C98A5%40AdobeOrg=1585540135%7CMCIDTS%7C19580%7CMCMID%7C07811295556865454993086478630926961519%7CMCAAMLH-1692328332%7C9%7CMCAAMB-1692328332%7CRKhpRz8krg2tLO6pguXWp5olkAcUniQYPHaMWWgdJ3xzPWQmdj0y%7CMCOPTOUT-1691730732s%7CNONE%7CMCAID%7CNONE%7CvVersion%7C4.4.0; _ncg_g_id_=4d40a8c1-d098-4817-9b73-adeb1ac41c21.3.1691665459.1754737942904; _lr_retry_request=true; kayla=g=786071f144dd473aafd9ff6b10f7a39f; gdprApplies=true; _dj_id.cff7=.1691638335.4.1691724198.1691723534.d51a0f87-c3c3-4e0d-aaec-cad543626ab5; usr_bkt=HY0f8Of9M1; _parsely_session={%22sid%22:4%2C%22surl%22:%22https://www.marketwatch.com/search?q=apple&ts=0&tab=All%2520News%22%2C%22sref%22:%22https://www.marketwatch.com/investing/stock/aapl%22%2C%22sts%22:1691726316810%2C%22slts%22:1691723534515}; _parsely_visitor={%22id%22:%22pid=bf2e4b8d-4749-421a-840f-2d21ae71034b%22%2C%22session_count%22:4%2C%22last_session_ts%22:1691726316810}; _lr_geo_location_state=ZH; _lr_geo_location=NL; _pnss=blocked; sso_fired_at=1691726326729; _pbjs_userid_consent_data=8871137552901317; __gads=ID=5f76ae834c3d2c87:T=1691638332:RT=1691726327:S=ALNI_MYeQa6qXb5p7Jn8m05Wegyo5l6AwQ; __gpi=UID=000009b28943ba2b:T=1691638332:RT=1691726327:S=ALNI_Ma3mi2vCUEEu9MQ552iyJ8f_OnyLg; _lr_sampling_rate=100; _ncg_sp_ses.f57d=*; cto_bundle=WExp8194MEJVYldSQ0NVaHFpalpDbTJFN1pETFUwdXR1RWdUMzZCYzluR1pMeVo5WEhmWUtva3ZkY2pQTjFWNlhpc2p6NEQwcmYlMkJqYlc0V29XSU05Q0MyUTRDV3dxQjEwa3NIYVpiJTJGTzNkZDVxYWhyc3lDYkpqcG1HZ2VCam5uSWNzaDlwYVEyZWRsaGVLa0RsVHlaU3BUcGtRJTNEJTNE; utag_main=v_id:0189dd803edd000cc3ddf5e2d12b0506f00e106700aee$_sn:5$_ss:0$_st:1691728136829$vapi_domain:marketwatch.com$_prevpage:MW_Search%3Bexp-1691729936835$ses_id:1691726329310%3Bexp-session$_pn:2%3Bexp-session; _ncg_sp_id.f57d=1a8cf395-3657-4492-be2f-7e6cb4e543a6.1691638334.5.1691726341.1691724198.3eeb2ae9-d043-4806-9840-a470e1a7ac38; ln_or=eyIzOTQyNDE3IjoiZCJ9; s_tp=5355; s_ppv=MW_Search%2C46%2C44%2C2461; gdprApplies=true',
+        #'cookie': 'optimizelyEndUserId=oeu1691638315857r0.7087681223582081; ccpaApplies=true; ccpaUUID=f1b52e2b-831e-4661-a601-26f45b9c22e3; ab_uuid=2bb6b0db-e60c-4a58-8c6f-1a7ffe71c69d; AMCVS_CB68E4BA55144CAA0A4C98A5%40AdobeOrg=1; _cls_v=71b4337b-4d2a-4857-8ab9-25e547a46069; _cls_s=cb9ce4cd-7044-42e8-b7e0-997bafce5259:0; _pcid=%7B%22browserId%22%3A%22ll4lrzf3xsz5befm%22%7D; cX_P=ll4lrzf3xsz5befm; _pctx=%7Bu%7DN4IgrgzgpgThIC4B2YA2qA05owMoBcBDfSREQpAeyRCwgEt8oBJAEzIE4AmHgZi4CsvAIwB2DqIAMADkHTRvEAF8gA; s_ecid=MCMID%7C07811295556865454993086478630926961519; s_cc=true; _uetvid=758743f0372e11eeaf7773af3d00e586; _rdt_uuid=1691638317494.509efc6d-b206-4dad-ab21-fa1245ae3898; _gcl_aw=GCL.1691638318.CjwKCAjw8symBhAqEiwAaTA__Ory9tIPdbQkDnXN5UtbxHrw9yWDTdXcRgrZFKSNTkdxN0A8UQViuBoCVrgQAvD_BwE; _gcl_au=1.1.1194856486.1691638318; cX_G=cx%3Aaay94xhyxbv11gicm2zvcbs06%3A118c0xph4rjn9; permutive-id=6c6c2bca-c05c-4138-88d6-6e1f360c4fc5; mw_loc=%7B%22Region%22%3A%22CA%22%2C%22Country%22%3A%22US%22%2C%22Continent%22%3A%22NA%22%2C%22ApplicablePrivacy%22%3A0%7D; fullcss-home=site-60d04d1451.min.css; icons-loaded=true; pushly.user_puuid=KjxevIlduSipjWShxOsKVchz9Kkg0XwA; letsGetMikey=enabled; dnsDisplayed=false; signedLspa=false; _pubcid=264ea218-4b67-4419-bbe9-75518d56c802; _ncg_domain_id_=1a8cf395-3657-4492-be2f-7e6cb4e543a6.1.1691638334184.1754710334184; _fbp=fb.1.1691638335144.1497534032; _dj_sp_id=e5a66968-eecf-41a1-a2f3-f6bb63e46721; _pcus=eyJ1c2VyU2VnbWVudHMiOm51bGx9; s_sq=djglobal%252Cdjwsj%3D%2526pid%253Dhttps%25253A%25252F%25252Fwww.marketwatch.com%25252F%2526oid%253D%25250A%252520%252520%252520%252520%252520%252520%2526oidt%253D3%2526ot%253DSUBMIT; fullcss-quote=quote-ccd11d2396.min.css; recentqsmkii=Stock-US-AAPL; _lr_env_src_ats=false; fullcss-section=section-15f53c310c.min.css; consentUUID=67c2a1aa-b753-49dc-a1af-16e72cc55240_22; _ncg_id_=1a8cf395-3657-4492-be2f-7e6cb4e543a6; AMCV_CB68E4BA55144CAA0A4C98A5%40AdobeOrg=1585540135%7CMCIDTS%7C19580%7CMCMID%7C07811295556865454993086478630926961519%7CMCAAMLH-1692328332%7C9%7CMCAAMB-1692328332%7CRKhpRz8krg2tLO6pguXWp5olkAcUniQYPHaMWWgdJ3xzPWQmdj0y%7CMCOPTOUT-1691730732s%7CNONE%7CMCAID%7CNONE%7CvVersion%7C4.4.0; _ncg_g_id_=4d40a8c1-d098-4817-9b73-adeb1ac41c21.3.1691665459.1754737942904; _lr_retry_request=true; kayla=g=786071f144dd473aafd9ff6b10f7a39f; gdprApplies=true; _dj_id.cff7=.1691638335.4.1691724198.1691723534.d51a0f87-c3c3-4e0d-aaec-cad543626ab5; usr_bkt=HY0f8Of9M1; _parsely_session={%22sid%22:4%2C%22surl%22:%22https://www.marketwatch.com/search?q=apple&ts=0&tab=All%2520News%22%2C%22sref%22:%22https://www.marketwatch.com/investing/stock/aapl%22%2C%22sts%22:1691726316810%2C%22slts%22:1691723534515}; _parsely_visitor={%22id%22:%22pid=bf2e4b8d-4749-421a-840f-2d21ae71034b%22%2C%22session_count%22:4%2C%22last_session_ts%22:1691726316810}; _lr_geo_location_state=ZH; _lr_geo_location=NL; _pnss=blocked; sso_fired_at=1691726326729; _pbjs_userid_consent_data=8871137552901317; __gads=ID=5f76ae834c3d2c87:T=1691638332:RT=1691726327:S=ALNI_MYeQa6qXb5p7Jn8m05Wegyo5l6AwQ; __gpi=UID=000009b28943ba2b:T=1691638332:RT=1691726327:S=ALNI_Ma3mi2vCUEEu9MQ552iyJ8f_OnyLg; _lr_sampling_rate=100; _ncg_sp_ses.f57d=*; cto_bundle=WExp8194MEJVYldSQ0NVaHFpalpDbTJFN1pETFUwdXR1RWdUMzZCYzluR1pMeVo5WEhmWUtva3ZkY2pQTjFWNlhpc2p6NEQwcmYlMkJqYlc0V29XSU05Q0MyUTRDV3dxQjEwa3NIYVpiJTJGTzNkZDVxYWhyc3lDYkpqcG1HZ2VCam5uSWNzaDlwYVEyZWRsaGVLa0RsVHlaU3BUcGtRJTNEJTNE; utag_main=v_id:0189dd803edd000cc3ddf5e2d12b0506f00e106700aee$_sn:5$_ss:0$_st:1691728136829$vapi_domain:marketwatch.com$_prevpage:MW_Search%3Bexp-1691729936835$ses_id:1691726329310%3Bexp-session$_pn:2%3Bexp-session; _ncg_sp_id.f57d=1a8cf395-3657-4492-be2f-7e6cb4e543a6.1691638334.5.1691726341.1691724198.3eeb2ae9-d043-4806-9840-a470e1a7ac38; ln_or=eyIzOTQyNDE3IjoiZCJ9; s_tp=5355; s_ppv=MW_Search%2C46%2C44%2C2461; gdprApplies=true',
         'newrelic': 'eyJ2IjpbMCwxXSwiZCI6eyJ0eSI6IkJyb3dzZXIiLCJhYyI6IjE2ODQyNzMiLCJhcCI6Ijc1NDg5OTM4MiIsImlkIjoiYjhmMjQwNDZjZWUxM2QxNiIsInRyIjoiMmFkMTRhZmI4YjZiNWJmNzczY2UyYzhlMjVjMzc3MDAiLCJ0aSI6MTY5MTcyNjgxNDc4NCwidGsiOiIxMDIyNjgxIn19',
         'referer': f'https://www.marketwatch.com/search?q={company}&ts=5&sd={current_month}%2F{current_day}%2F{current_year}&ed={next_month}%2F{next_day}%2F{next_year}&tab=All%20News',
         'sec-ch-ua': '"Not/A)Brand";v="99", "Google Chrome";v="115", "Chromium";v="115"',
@@ -154,7 +183,7 @@ def get_marketwatch_data(company,start_date:datetime=datetime(2016,1,1),end_date
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
         }
 
-        response = requests.request("GET", url, headers=headers, data=payload)
+        #response = requests.request("GET", url, headers=headers, data=payload)
         '''
         if indexer%800 == 0 and indexer!=0: #i think I need this in order to stop the 403 request errors
             input("Change IP address then hit enter to continue: ")
@@ -167,8 +196,18 @@ def get_marketwatch_data(company,start_date:datetime=datetime(2016,1,1),end_date
             # Find all elements with the class "article__headline"
             headline_elements = soup.find_all(class_="article__headline")
         except:
-            input("Change IP address then hit enter to continue: ")
+            time.sleep(5)
             continue
+
+        if len(headline_elements) == 0:
+            terminate_and_run_proton(r"D:\Program Files (x86)\Proton Technologies\ProtonVPN\ProtonVPN.exe")
+            counter+=1
+            continue
+        else:
+            counter=0
+
+        if counter >= 4:
+            return 0    
 
         # Iterate through headline elements and extract headlines and dates
         for headline_element in headline_elements:
@@ -182,7 +221,7 @@ def get_marketwatch_data(company,start_date:datetime=datetime(2016,1,1),end_date
             if headline_text and date_text:
                 data['Date'].append(date_text)
                 data['Headline'].append(headline_text)
-                data['Summary'].append(summary_text)
+                data['Summary'].append(summary_text)    
         
         indexer+=1
         if indexer%20==0:
@@ -284,40 +323,14 @@ def get_barrons_data(company,max_page:int=60):
 
 
 
-def terminate_and_run_proton(path,terminate=True,run=True):
-    protonvpn_path = path
-    connect_command = [protonvpn_path]
-
-    kill_command = 'taskkill /IM ProtonVPN.exe /F'
-    kill_background = 'taskkill /F /IM ProtonVPN.WireGuardService.exe'
-    kill_service = 'taskkill /F /IM ProtonVPNService.exe'
-
-    if terminate:
-        subprocess.run(kill_command)
-        subprocess.run(kill_service)
-        subprocess.run(kill_background)
-        time.sleep(10)
-        print('Successful termination')
-    if run:
-        # Start the VPN connection process
-        vpn_process = subprocess.Popen(connect_command)
-        time.sleep(15)  # Wait for the connection to establish
-        print('Connected to VPN')
-
-    # Optionally, keep the VPN connection process running
-    #if vpn_process:
-    #    vpn_process.wait()  # Wait for the process to complete
-    
-
-
-
 def get_seekingalpha_analysis(symbol,start_date=datetime(2010,1,1),end_date=datetime(2023,6,1),time_interval=20,file_method='w'):
     data = {'Date':[],'Headline':[]}
     current_date = start_date
     next_date = current_date + timedelta(days=time_interval+1)
 
-    terminate_and_run_proton(r"C:\Program Files\Proton\VPN\v3.1.0\ProtonVPN.exe")
-
+    #terminate_and_run_proton(r"C:\Program Files\Proton\VPN\v3.1.0\ProtonVPN.exe",terminate=False)
+    terminate_and_run_proton(r"D:\Program Files (x86)\Proton Technologies\ProtonVPN\ProtonVPN.exe",terminate=False)
+    counter=0
     while next_date < end_date:
         #the url locates time through unix timestamps
         current_str = current_date.strftime('%Y-%m-%d')
@@ -344,21 +357,28 @@ def get_seekingalpha_analysis(symbol,start_date=datetime(2010,1,1),end_date=date
         'sec-fetch-site': 'same-origin',
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
         }
-        
-        response = requests.request("GET",url,headers=headers, data=payload)
-        j = response.json()
-
+        try:
+            response = requests.request("GET",url,headers=headers, data=payload)
+            j = response.json()
+        except:
+            time.sleep(15)
+            continue
         if not 'data' in j:
-            terminate_and_run_proton(r"C:\Program Files\Proton\VPN\v3.1.0\ProtonVPN.exe")
+            terminate_and_run_proton(r"D:\Program Files (x86)\Proton Technologies\ProtonVPN\ProtonVPN.exe")
             response = requests.request("GET", url, headers=headers, data=payload)
             j = response.json()
-
+            counter+=1
             if not 'data' in j:
                 print('No data')
                 current_date = next_date
                 next_date = next_date + timedelta(days=time_interval+1)
                 continue
+        else:
+            counter=0
         
+        if counter>=4:
+            return 0
+
         for article in j['data']:
             attributes = article.get('attributes', {})
             title = attributes.get('title', None)
@@ -499,13 +519,23 @@ def news_formatter(symbol,outlets=['bloomberg','marketwatch'],start_date=pd.Time
     return df
 '''
 
-#get_cnbc_data('apple',scroll=60)
-#get_marketwatch_data('apple')
-#get_bloomberg_data('MCD',max_page=50)
-#get_marketwatch_data('GE',start_date=datetime(2021,1,2),end_date=datetime(2022,1,1),file_method='a')
-#symbol_list = ['AAPL','AAPL','AMD','AMZN','BAC','CGNX','DELL','DIS','F','GOOG','INTC','MSFT','NFLX','NVDA','ROKU','TSLA']
-#for symbol in symbol_list:
 #    news_formatter(symbol)
 #news_formatter('WMT')
 #news_formatter('BRK-B')
-get_seekingalpha_analysis('AMZN',start_date=datetime(2010,1,1),end_date=datetime(2023,6,1),file_method='w')
+#get_marketwatch_data('AMD',start_date=datetime(2010,1,1),end_date=datetime(2016,1,1),file_method='a')
+
+symbol_list = ['DELL','DIS',
+               'Ford','GE','GOOG','INTC','MSFT','NFLX','NVDA',
+               'ROKU','TSLA','WMT']
+for symbol in symbol_list:    
+    get_marketwatch_data(symbol,start_date=datetime(2010,1,1),end_date=datetime(2016,1,1),file_method='a')
+    #get_seekingalpha_analysis(symbol)
+    #don't forget to delete the ][ characters
+symbol_list = ['ACGL','BANC','BCX','CSCO','MCD','QCOM','RUN','SHOP','SBUX','T','TGT','UPS']
+
+for symbol in symbol_list:
+    #get_seekingalpha_analysis(symbol)
+    get_marketwatch_data(symbol,start_date=datetime(2010,1,1))
+    get_bloomberg_data(symbol,max_page=50)
+
+get_seekingalpha_analysis('AAL',start_date=datetime(2010,1,1),end_date=datetime(2023,6,1),file_method='w')
