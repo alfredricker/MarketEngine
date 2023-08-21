@@ -1,3 +1,6 @@
 API_KEYS.txt
 tests.py
 lightning_logs
+web_scraping/vpn_script.py
+web_scraping/vpn.ps1
+notes.md
