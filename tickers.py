@@ -15,8 +15,7 @@ def get_equity_data(symbol,start_date='2000-01-01',end_date='2023-06-01'):
     with open(f'data_equity/{symbol}.dat', 'w') as file:
         file.write(j)
 
-get_equity_data('MCD')
-
+#get_equity_data('MLM')
 
 #create a list of tickers from csv data frame
 '''

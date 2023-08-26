@@ -53,7 +53,9 @@ print("Initialized housing data")
 def insider_init(symbol:str):
     with open(f'data_misc/insider_{symbol}.dat','r') as file:
         r = file.read()
-    data = pd.read_json(r)
+    data = pd.read_json(r,convert_axes=True)
+    #replace all rows where insider_flow==1 to =0
+    data['InsiderFlow'] = data['InsiderFlow'].replace(1,0)
     df = fn.multiple_date_fill(data)
     return df
 
@@ -75,23 +77,31 @@ def equity_init(stocks_list):
         stock_reported_eps = stock_earnings[0]
         stock_surprise_eps = stock_earnings[1]
 
+        insider = insider_init(stock_sym)
+        retail_df = fn.retail_sentiment_formatter(stock_sym)
+        news_sentiment = news_init(stock_sym)
+        alpha = news_init(stock_sym,prefix='seekingalpha')
+
         #CONCATENATE ALL DATA INTO A SINGLE LARGE DATAFRAME
-        data_list = [stock_close,stock_volume,stock_trend,stock_rsi,stock_reported_eps,stock_surprise_eps,gdp,cpi,dff,m1,unrate,ny]
+        data_list = [stock_close,stock_volume,stock_trend,stock_rsi,stock_reported_eps,stock_surprise_eps,
+                     gdp,cpi,dff,m1,unrate,ny,insider,retail_df,news_sentiment,alpha]
         df = fn.concatenate_data(data_list)
         df['Close_Tmr'] = df['Close'].shift(-1)
         df = df.drop(index=df.index[-1]) #drop the last row because the above shift method will result in NaN values
         df.set_index('Date',inplace=True)
         df_list.append(df)
-
-    data = pd.concat(df_list,axis=0,ignore_index=True)
-    data.to_csv('DATA.csv')
+    if len(df_list) < 2:
+        data = df_list[0]
+    else:    
+        data = pd.concat(df_list,axis=0,ignore_index=True)
+    data.to_csv(f'csv_data/{stocks_list[0]}.csv')
     print(f'Initialized equity data')
     return data
 #IMPORTANT: since I want to look at how the present day data effects the closing price of tomorrow, I have to copy the close column, and shift it up 1 position in a new row
 
 
-def news_init(symbol):
-    with open(f'data_misc/news_sentiment_{symbol}.dat','r') as file:
+def news_init(symbol,prefix='news_sentiment'):
+    with open(f'data_misc/{prefix}_{symbol}.dat','r') as file:
         r = file.read()
     df = pd.read_json(r)
     return df
@@ -100,9 +110,9 @@ def news_init(symbol):
 def sentiment_init(stocks_list):
     df_list = []    
     for i in range(len(stocks_list)):
-        #retail_df = fn.retail_sentiment_formatter(stocks_list[i])
         sym = stocks_list[i]
         news_sentiment = news_init(sym)
+        alpha = news_init(sym,prefix='seekingalpha')
         stock_trend = trend_init(sym)
 
         stock = fn.equity_formatter(sym)
@@ -111,27 +121,30 @@ def sentiment_init(stocks_list):
         stock_rsi = fn.calculate_rsi(sym)
 
         insider = insider_init(sym)
+        retail_df = fn.retail_sentiment_formatter(sym)
 
         stock_earnings = fn.earnings_formatter(sym)
         stock_reported_eps = stock_earnings[0]
         stock_surprise_eps = stock_earnings[1]
 
         data_list = [stock_close,stock_volume,stock_reported_eps,stock_surprise_eps,
-                     stock_trend,news_sentiment,stock_rsi,insider,dff]
+                     stock_trend,news_sentiment,alpha,stock_rsi,insider,retail_df,dff]
         df = fn.concatenate_data(data_list)
         df['Close_Tmr'] = df['Close'].shift(-1)
         df = df.drop(index=df.index[-1]) #drop the last row because the above shift method will result in NaN values
         df.set_index('Date',inplace=True)
+        print(f'Finished formatting {sym}')
         df_list.append(df)
 
     data = pd.concat(df_list,axis=0,ignore_index=True)
-    data.to_csv('DATA_SENTIMENT.csv')
+    data.to_csv('csv_data/CLASSIFIER_1.csv')
     print(f'Initialized sentiment data')
     return data
 
 
 #sentiment_init(retail_stocks,retail_companies)
 #equity_init(model_stocks,model_companies)
-model_stocks = ['AAL','AAPL','AMD','AMZN','BAC','BRK-B','CGNX','DELL','DIS',
-                'INTC','TSLA','F','GOOG','MSFT','NVDA','NFLX','WMT']
+#as of now, seekingalpha_F.dat ends in 2015, so I am leaving ford out of the list
+model_stocks = ['AAL','AAPL','AMD','AMZN','BAC','BANC','BRK-B','CGNX','UPS','DELL','DIS',
+                'INTC','GE','TGT','MCD','MSFT','NVDA','NFLX','QCOM','ROKU','RUN','SBUX','WMT','GOOG','CSCO']
 sentiment_init(model_stocks)

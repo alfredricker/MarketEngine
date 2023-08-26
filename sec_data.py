@@ -2,14 +2,14 @@ import requests
 import json
 from bs4 import BeautifulSoup
 import pandas as pd
-
+#from news_sentiment import terminate_and_run_proton
 #IMPORTANT: the sec locates company urls by the "CIK" number, which is a unique identifier for each company. I'm going to have to include them in a dictionary.
 cik = {'AAL':6201,'AAPL':320193,'AMD':2488,
-       'AMZN':1018724,'BAC':70858,'BRK-B':1067983,'CGNX':851205,
-       'DELL':1571996,'DIS':1744489,'F':37996,'GE':40545,
-       'GOOG':1652044,'INTC':50863,'MCD':63908,'META':1326801,'MLM':916076,'NFLX':1065280,
-       'NVDA':1045810,'ROKU':1428439,'SBUX':829224,'SHOP':1594805,
-       'T':732717,'TGT':27419,'TSLA':1318605,'WMT':104169}
+       'AMZN':1018724,'BAC':70858,'BANC':1169770,'BRK-B':1067983,'CGNX':851205,
+       'CSCO':858877,'DELL':1571996,'DIS':1744489,'F':37996,'GE':40545,
+       'GOOG':1652044,'INTC':50863,'MCD':63908,'META':1326801,'MLM':916076,'MSFT':789019,'NFLX':1065280,
+       'NVDA':1045810,'QCOM':804328,'ROKU':1428439,'RUN':1469367,'SBUX':829224,'SHOP':1594805,
+       'T':732717,'TGT':27419,'TSLA':1318605,'UPS':1090727,'WMT':104169}
 
 def get_insider_trading_data(symbol:str,max_page:int=6):
     #I'm thinking about doing percentage of securities owned vs acquired or sold
@@ -41,8 +41,11 @@ def get_insider_trading_data(symbol:str,max_page:int=6):
                     or code.startswith('F')):
                 continue
 
-            first_number = float(data[7].text.strip())
-            second_number = float(data[8].text.strip())
+            try:
+                first_number = float(data[7].text.strip())
+                second_number = float(data[8].text.strip())
+            except:
+                continue
             if second_number == 0:
                 continue #I'll just skip this iteration if the shares owned is zero because I'm not sure what to replace it with
 
@@ -57,5 +60,9 @@ def get_insider_trading_data(symbol:str,max_page:int=6):
     with open(f'data_misc/insider_{symbol}.dat','w') as file:
         file.write(j)
 
-
-get_insider_trading_data('AAL')
+symbol_list = ['NFLX','NVDA','QCOM','ROKU','RUN','SBUX','SHOP','T','TGT','TSLA','UPS','WMT']
+count = 1
+for symbol in symbol_list:
+    get_insider_trading_data(symbol,max_page=100)
+    #if count%4==0:
+    #    terminate_and_run_proton(r"D:\Program Files (x86)\Proton Technologies\ProtonVPN\ProtonVPN.exe")

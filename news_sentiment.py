@@ -443,7 +443,7 @@ def get_cnbc_data(company, scroll: int = 30):
 
 #------------------------------------------------------------------------------
 
-'''
+
 #HUGGING FACE PRE TRAINED SENTIMENT MODEL
 from transformers import AutoTokenizer,AutoModelForSequenceClassification
 from scipy.special import softmax
@@ -468,9 +468,14 @@ def news_roberta(company,outlet): #pretty much the same as bloomberg init
     with open(f'web_scraping/{company}_{outlet}.dat','r') as file:
         r = file.read()
     data = pd.read_json(r)
+
+    if outlet == 'seekingalpha':
+        data['Date'] = data['Date'].apply(lambda x: x[:10])
+    
     data['Date'] = pd.to_datetime(data['Date'])
     data = data.sort_values(by='Date', axis=0)
     sentiment_df = {'Headline_score':[]}
+
     for index in data.index:
         headline_score = roberta_sentiment(data['Headline'].iloc[index])
         #summary_score = roberta_sentiment(data['Summary'].iloc[index])
@@ -486,10 +491,15 @@ def news_roberta(company,outlet): #pretty much the same as bloomberg init
 
 
 #the news_init function takes a while so I'm going to initialize one at a time and save them to dat files.
-def news_formatter(symbol,outlets=['bloomberg','marketwatch'],start_date=pd.Timestamp('2016-01-01'), end_date=pd.Timestamp('2023-06-01')):
+def news_formatter(symbol,
+                   outlets=['bloomberg','marketwatch'],
+                   start_date=pd.Timestamp('2010-01-01'), 
+                   end_date=pd.Timestamp('2023-06-01'),
+                   prefix='news_sentiment'):
     df_list = []
     for outlet in outlets:
         df_list.append(news_roberta(symbol,outlet))
+
     if len(df_list)>1:
         new_list = []
         for df in df_list:
@@ -505,37 +515,25 @@ def news_formatter(symbol,outlets=['bloomberg','marketwatch'],start_date=pd.Time
         df = pd.concat(new_list,axis=0)
     else:
         df = df_list[0]
+
     #print(df)
     #collapse all the headline scores into one averaged column
     #average_series = df.apply(lambda row: row[1:].mean(), axis=1)
     #print(average_series)
     # Convert the average Series back to a DataFrame
     #average_df = pd.concat([df.iloc[:,0],pd.DataFrame({'Headline': average_series})],axis=1)
+
     df = fn.multiple_date_fill(df)
     j = df.to_json(orient='records',date_format='iso')
-    with open(f'data_misc/news_sentiment_{symbol}.dat','w') as file:
+    with open(f'data_misc/{prefix}_{symbol}.dat','w') as file:
         file.write(j)
     print(f'Successfully formatted {symbol} news data')
     return df
-'''
+
 
 #    news_formatter(symbol)
 #news_formatter('WMT')
 #news_formatter('BRK-B')
 #get_marketwatch_data('AMD',start_date=datetime(2010,1,1),end_date=datetime(2016,1,1),file_method='a')
 
-symbol_list = ['DELL','DIS',
-               'Ford','GE','GOOG','INTC','MSFT','NFLX','NVDA',
-               'ROKU','TSLA','WMT']
-for symbol in symbol_list:    
-    get_marketwatch_data(symbol,start_date=datetime(2010,1,1),end_date=datetime(2016,1,1),file_method='a')
-    #get_seekingalpha_analysis(symbol)
-    #don't forget to delete the ][ characters
-symbol_list = ['ACGL','BANC','BCX','CSCO','MCD','QCOM','RUN','SHOP','SBUX','T','TGT','UPS']
-
-for symbol in symbol_list:
-    #get_seekingalpha_analysis(symbol)
-    get_marketwatch_data(symbol,start_date=datetime(2010,1,1))
-    get_bloomberg_data(symbol,max_page=50)
-
-get_seekingalpha_analysis('AAL',start_date=datetime(2010,1,1),end_date=datetime(2023,6,1),file_method='w')
+news_formatter('AAPL',outlets=['seekingalpha'],prefix='seekingalpha')

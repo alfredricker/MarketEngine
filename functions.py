@@ -63,7 +63,7 @@ def datetime_forward_fill(df):
     #this function takes in a pandas data frame and fills in all missing daily values by taking the most recent value
     if not 'Date' in df.columns:
         return print("Error: must have 'Date' column in dataframe")
-    df['Date'] = pd.to_datetime(df['Date'])
+    df.loc[:,'Date'] = pd.to_datetime(df['Date'])
     df_sorted = df.sort_values(by='Date')
     currentdate = df_sorted['Date'].iloc[0]
     loc_index = 1
@@ -90,7 +90,7 @@ def forward_fill_with_counter(df):
     #this function takes in a pandas data frame and fills in all missing daily values by taking the most recent value
     if not 'Date' in df.columns:
         return print("Error: must have 'Date' column in dataframe")
-    df['Date'] = pd.to_datetime(df['Date'])
+    df.loc[:,'Date'] = pd.to_datetime(df['Date'])
     df_sorted = df.sort_values(by='Date')
     currentdate = df_sorted['Date'].iloc[0]
     loc_index = 1
@@ -125,14 +125,14 @@ def percent_forward_fill(df):
     #this function takes in a pandas data frame and fills in all missing daily values by taking the most recent value
     if not 'Date' in df.columns:
         return print("Error: must have 'Date' column in dataframe")
-    df['Date'] = pd.to_datetime(df['Date'])
+    df.loc[:,'Date'] = pd.to_datetime(df['Date'])
     df_sorted = df.sort_values(by='Date')
     currentdate = df_sorted['Date'].iloc[0]
     loc_index = 1
     #change the data from nominal to percentage
     for column in df.columns[1:]:
         df_sorted = df_percent_change(df,column)
-    df_sorted['Date'] = pd.to_datetime(df_sorted['Date'])
+    df_sorted.loc[:,'Date'] = pd.to_datetime(df_sorted['Date'])
     df_new = df_sorted
     while currentdate<df_sorted['Date'].max(axis=0):
         #check to see if next date has data     
@@ -157,7 +157,7 @@ def multiple_date_fill(df,target_column=None):
     #this function takes in a pandas data frame and fills in all missing daily values by taking the most recent value
     if not 'Date' in df.columns:
         return print("Error: must have 'Date' column in dataframe")
-    df['Date'] = pd.to_datetime(df['Date'])
+    df.loc[:,'Date'] = pd.to_datetime(df['Date'])
     df_sorted = df.sort_values(by='Date')
     #df_sorted['Date'] = pd.to_datetime(df_sorted['Date']).dt.date
     currentdate = df_sorted['Date'].iloc[0]
@@ -196,7 +196,7 @@ def housing_formatter(city):
     with open(f'data_misc/{city}.dat','r') as f:
         f_read = f.read()
     df = pd.read_json(f_read)
-    df['date'] = pd.to_datetime(df['date'])
+    df.loc[:,'date'] = pd.to_datetime(df['date'])
     df_sorted = df.sort_values(by='date')
     df = pd.DataFrame({'Date':df_sorted['date'],'Value':df_sorted['value']})
     df = df_percent_change(df,'Value')
@@ -273,7 +273,7 @@ def equity_formatter(symbol,nominal=False,api='yfinance'):
 
     volume_df = datetime_forward_fill(volume_df)
 
-    print(f'Successfully formatted {symbol} data')
+    #print(f'Successfully formatted {symbol} data')
     return [price_df,volume_df]
 
 
@@ -305,7 +305,7 @@ def fed_formatter(code,nominal):
         df_fill = datetime_forward_fill(df)
     else:
         df_fill = percent_forward_fill(df)
-    df_fill['Date'] = pd.to_datetime(df_fill['Date'])
+    df_fill.loc[:,'Date'] = pd.to_datetime(df_fill['Date'])
     #now remove all rows with dates before 1980 to make the code faster
     df = df_fill.loc[df_fill['Date'] >= pd.to_datetime('1980-01-01')]
     print(f'Successfully formatted {code} data')
@@ -331,7 +331,7 @@ def concatenate_data(df_list):
     max_value = pd.to_datetime(min_max[1])
     df_filtered = []
     for df in df_list:
-        df['Date'] = pd.to_datetime(df['Date'])
+        df.loc[:,'Date'] = pd.to_datetime(df['Date'])
         df = df.sort_values(by='Date')
         df = df[df['Date']>=min_value]
         df = df[df['Date']<=max_value]

@@ -47,7 +47,7 @@ def get_retail_sentiment_quandl(symbol:str,increment:int=20,start_date=datetime(
     #I have to make a list because the quandl api is annoying and calls by either a single date or an enumerated list of dates.
     #calling by each date individually takes a really long time so I have to go with this route
     def day_string(start_date,length:int):
-        days_string = ', '.join([(start_date + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(length)])
+        days_string = ','.join([(start_date + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(length)])
         return days_string
 
     current_date = start_date
@@ -57,7 +57,7 @@ def get_retail_sentiment_quandl(symbol:str,increment:int=20,start_date=datetime(
             date_string = current_date.strftime('%Y-%m-%d')
         else:
             date_string = day_string(current_date,increment)
-        data = quandl.get_table('NDAQ/RTAT10', date=date_string, ticker=symbol)
+        data = quandl.get_table('NDAQ/RTAT', date=date_string, ticker=symbol)
         data = pd.DataFrame(data)
         
         if current_date == start_date:
@@ -65,7 +65,7 @@ def get_retail_sentiment_quandl(symbol:str,increment:int=20,start_date=datetime(
         else:
             df = pd.concat([df,data],axis=0,ignore_index=True)
         current_date = current_date + timedelta(days=increment)
-        print(current_date)
+        #print(current_date)
         df = pd.concat([df,data],axis=0,ignore_index=True)
 
     df['date'] = pd.to_datetime(df['date'])
@@ -73,6 +73,8 @@ def get_retail_sentiment_quandl(symbol:str,increment:int=20,start_date=datetime(
     j = df.to_json(orient='records',date_format='iso')
     with open(f'data_equity/{symbol}_retail_sentiment.dat','w') as file:
         file.write(j)
+
+    print(f'Successfully saved {symbol} retail sentiment')
     return j
 
 
@@ -91,7 +93,7 @@ def get_retail_sentiment(symbol:str,increment:int=20,start_date=datetime(2016,1,
             date_string = current_date.strftime('%Y-%m-%d')
         else:
             date_string = day_string(current_date,increment)
-        url = f'https://data.nasdaq.com/api/v3/datatables/NDAQ/RTAT10?date={date_string}&ticker={symbol}&api_key=h3gFTxuuELMsc6zXU7_J'
+        url = f'https://data.nasdaq.com/api/v3/datatables/NDAQ/RTAT?date={date_string}&ticker={symbol}&api_key=h3gFTxuuELMsc6zXU7_J'
         data = requests.get(url)
         j = data.json()
         print(j)
@@ -128,8 +130,8 @@ def balance_sheet_formatter(symbol:str):
     
 #get_balance_sheet(symbol)
 #balance_sheet_formatter(symbol)
-#get_earnings('WMT')
-#get_retail_sentiment_quandl('UPS',increment=1,start_date=datetime(2020,1,1),end_date=datetime(2020,3,1))
-
-
-
+ticker_list = ['AAL','AAPL','ACGL','AMD','AMZN','BAC','BANC','BRK-B','CGNX','CSCO','DELL','DIS','F','GE','GOOG',
+ 'INTC','MCD','META','MLM','MSFT','NFLX','NVDA','QCOM','ROKU','RUN','SBUX','SHOP','T','TGT','TSLA','WMT']
+#for ticker in ticker_list:
+#    get_retail_sentiment_quandl(ticker)
+get_retail_sentiment_quandl('BRK.B')
