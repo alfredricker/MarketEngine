@@ -23,17 +23,17 @@ from torchmetrics import Accuracy
 pl.seed_everything(45) #make results reproducible
 # Load and preprocess your data
 #df = pd.read_csv('DATA_SENTIMENT.csv')
-df = pd.read_csv('csv_data/CLASSIFIER_1.csv')
+df = pd.read_csv('csv_data/AAL.csv')
 df = df.iloc[:,1:] #remove the unwanted index column
 df.fillna(value=0,inplace=True)
 size = df.shape[1]
 df = fn.transform_to_binary(df,'Close_Tmr')
-df = df.iloc[:68400,:]
+#df = df.iloc[:68400,:]
 print(df)
 #print(df)
 
 # Split the data into training and test sets (95:5 ratio)
-train_df, test_df = train_test_split(df, test_size=0.05)
+train_df, test_df = train_test_split(df, test_size=0.10) #IMPORTANT: change test_size back to 0.05 for larger data sets.
 
 # Remove imbalances from training data.. this is already done with sort_by_label
 balanced_train_df = fn.remove_imbalances(train_df, 'Close_Tmr')
@@ -208,7 +208,7 @@ trainer = pl.Trainer(
 )
 
 trainer.fit(model,data_module)
-torch.save(model.state_dict(),'MODELS/classifier-1.pickle')
+torch.save(model.state_dict(),'CHECKPOINTS/AAL.ckpt')
 
 #get the numpy array of the predicted values
 with torch.no_grad():

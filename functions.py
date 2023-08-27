@@ -1,4 +1,5 @@
 from datetime import datetime,timedelta
+from typing import List
 import json
 import pandas as pd
 import numpy as np
@@ -8,21 +9,6 @@ import re
 def contains_non_numeric(input_string):
     pattern = r'^[0-9]*\.?[0-9]+$'
     return not re.match(pattern, input_string)
-
-#changes the values column of a pandas data frame to be percentage instead of nominal
-#this function only works for updating one column
-def df_percent_change(df,target):
-    if not 'Date' in df.columns:
-        print("Must have date and value column in df for percent_change()")
-    df_sort = df.sort_values(by='Date')
-
-    df_sort[target] = df_sort[target].astype(float)
-    df_sort[target] = df_sort[target].pct_change()
-    df_sort_copy = df_sort.copy()
-    df_sort_copy.loc[df_sort_copy.index[0], target] = df_sort_copy.loc[df_sort_copy.index[1], target]
-    #df_sort[target].iloc[0] = df_sort[target].iloc[1] #as not to have NaN in the first column
-    #df_sort = df_sort.drop(labels=df_sort.index[0],axis=0)
-    return df_sort_copy
 
 
 def get_recent_trading_day():
@@ -57,164 +43,118 @@ def get_json_date_extrema(file_path):
     arr = [start_date,end_date]
     return arr
 
+#--------------------------------------------------------------------------------------------------------
 
-#works for more than two columns of data
-def datetime_forward_fill(df):
+def inverse_sqrt_damping(value:float,t:int,c:float): #c is damping constant, t is number of days since initial information
+    y = value/np.sqrt(1+(t*t/(c*c)))
+    return y
+
+def linear_interpolate(df:pd.DataFrame):
+    # Generate a date range with daily intervals between the min and max datetime
+    date_range = pd.date_range(start=df['Date'].min(), end=df['Date'].max(), freq='D')
+    # Reindex the DataFrame with the generated date range
+    df = df.set_index('Date').reindex(date_range)
+    # Linearly interpolate the missing values
+    df.interpolate(method='linear', inplace=True)
+    df.index = df.index.set_names(['Date'])
+    df.reset_index(inplace=True)
+    return df
+
+
+def forward_fill(df:pd.DataFrame,
+                 target_columns=None, #columns that you would like to keep in the dataframe (default None keeps all columns)
+                 percent_columns=None, #fill with percent change rather than nominal values
+                 counter:bool=False, #include a counter column, i.e. the number of days since a value has not changed
+                 damping_columns=None, #include a damping function to damp missing values towards zero as time->inf
+                 damping_constant:float=15.0, #this determines the convexity of the damping
+                 interpolate_columns=None, #linearly interpolate the values rather than fill in with most recent value
+                 end_date=None): #the date to fill the data up to. default is the max date in the df
     #this function takes in a pandas data frame and fills in all missing daily values by taking the most recent value
-    if not 'Date' in df.columns:
-        return print("Error: must have 'Date' column in dataframe")
-    df.loc[:,'Date'] = pd.to_datetime(df['Date'])
-    df_sorted = df.sort_values(by='Date')
-    currentdate = df_sorted['Date'].iloc[0]
-    loc_index = 1
-    df_new = df_sorted
-    while currentdate<df_sorted.max(axis=0)[0]:
-        #check to see if next date has data     
-        if currentdate + timedelta(days=1) == df_sorted['Date'].iloc[loc_index]:
-            currentdate = df_sorted['Date'].iloc[loc_index]
-            loc_index+=1
-        else:
-            #loop through all target columns
-            inc_date = currentdate + timedelta(days=1)
-            new_row = {'Date':inc_date}
-            for column in df.columns[1:]:
-                new_row[column] = df_sorted[column].iloc[loc_index-1]
-            df_new = pd.concat([df_new,pd.DataFrame([new_row])],ignore_index=True)
-            currentdate = inc_date
-    df_new = df_new.sort_values(by='Date')
-    return df_new
-
-
-#includes a column that tells you how many weeks since the updated data
-def forward_fill_with_counter(df):
-    #this function takes in a pandas data frame and fills in all missing daily values by taking the most recent value
-    if not 'Date' in df.columns:
-        return print("Error: must have 'Date' column in dataframe")
-    df.loc[:,'Date'] = pd.to_datetime(df['Date'])
-    df_sorted = df.sort_values(by='Date')
-    currentdate = df_sorted['Date'].iloc[0]
-    loc_index = 1
-    df_new = df_sorted
-    day_counter = 0
-    week_counter=0
-    df_sorted['Counter']=0 #create a new column filled with zeros
-    while currentdate<df_sorted.max(axis=0)[0]:
-        #check to see if next date has data     
-        if currentdate + timedelta(days=1) == df_sorted['Date'].iloc[loc_index]:
-            currentdate = df_sorted['Date'].iloc[loc_index]
-            loc_index+=1
-            day_counter = 0
-            week_counter = 0
-        else:
-            #loop through all target columns
-            inc_date = currentdate + timedelta(days=1)
-            day_counter+=1
-            if day_counter%7==0:
-                week_counter+=1
-            new_row = {'Date':inc_date,'Counter':week_counter}
-            for column in df.columns[1:]:
-                new_row[column] = df_sorted[column].iloc[loc_index-1]
-            df_new = pd.concat([df_new,pd.DataFrame([new_row])],ignore_index=True)
-            currentdate = inc_date
-    df_new = df_new.sort_values(by='Date')
-    return df_new
-
-
-#works for more than two columns of data
-def percent_forward_fill(df):
-    #this function takes in a pandas data frame and fills in all missing daily values by taking the most recent value
-    if not 'Date' in df.columns:
-        return print("Error: must have 'Date' column in dataframe")
-    df.loc[:,'Date'] = pd.to_datetime(df['Date'])
-    df_sorted = df.sort_values(by='Date')
-    currentdate = df_sorted['Date'].iloc[0]
-    loc_index = 1
-    #change the data from nominal to percentage
-    for column in df.columns[1:]:
-        df_sorted = df_percent_change(df,column)
-    df_sorted.loc[:,'Date'] = pd.to_datetime(df_sorted['Date'])
-    df_new = df_sorted
-    while currentdate<df_sorted['Date'].max(axis=0):
-        #check to see if next date has data     
-        if currentdate + timedelta(days=1) == df_sorted['Date'].iloc[loc_index]:
-            currentdate = df_sorted['Date'].iloc[loc_index]
-            loc_index+=1
-        else:
-            #loop through all target columns
-            inc_date = currentdate + timedelta(days=1)
-            new_row = {'Date':inc_date}
-            for column in df.columns[1:]:
-                new_row[column] = df_sorted[column].iloc[loc_index-1]
-                # Check for NaN and replace with 0
-            df_new = pd.concat([df_new,pd.DataFrame([new_row])],ignore_index=True)
-            currentdate = inc_date
-    df_new = df_new.sort_values(by='Date')
-    return df_new
-
-
-#this function is the same as datetime forward fill except it averages the values of duplicate dates
-def multiple_date_fill(df,target_column=None):
-    #this function takes in a pandas data frame and fills in all missing daily values by taking the most recent value
-    if not 'Date' in df.columns:
-        return print("Error: must have 'Date' column in dataframe")
-    df.loc[:,'Date'] = pd.to_datetime(df['Date'])
-    df_sorted = df.sort_values(by='Date')
-    #df_sorted['Date'] = pd.to_datetime(df_sorted['Date']).dt.date
-    currentdate = df_sorted['Date'].iloc[0]
-    loc_index = 1
-    df_new = df_sorted
-    while currentdate<df_sorted.max(axis=0)[0]:
-        #check to see if next date has data     
-        if currentdate + timedelta(days=1) == df_sorted['Date'].iloc[loc_index]:
-            currentdate = df_sorted['Date'].iloc[loc_index]
-            loc_index+=1
-        elif currentdate == df_sorted['Date'].iloc[loc_index]: #if the current date equals the next date, continue
-            loc_index+=1
-        else:
-            #loop through all target columns
-            inc_date = currentdate + timedelta(days=1)
-            new_row = {'Date':inc_date}
-            for column in df.columns[1:]:
-                new_row[column] = df_sorted[column].iloc[loc_index-1]
-            df_new = pd.concat([df_new,pd.DataFrame([new_row])],ignore_index=True)
-            currentdate = inc_date
-
-    df_new = df_new.sort_values(by='Date')
+    if 'Date' != df.columns[0]:
+        return print("Error: 'Date' must be 0th column in dataframe")
     
-    if target_column is None:
-        mean_column = df_new.columns[1] #column to take the mean of
-    else:
-        mean_column = target_column
-        
-    df_new = df_new.groupby('Date')[mean_column].mean().reset_index()
-    return df_new
+    if target_columns is not None:
+        target_list = target_columns.insert(0,'Date')
+        df = df[target_list]
 
+    columns = list(df.columns[1:])
+    if percent_columns=='all':
+        percent_columns = df.columns[1:] #don't want to remove these columns from the list because we still need to fill in this data
+    elif damping_columns=='all':
+        damping_columns = df.columns[1:]
 
-#similar to forward fill but tailored to the zillow housing data
-#this also rewrites the value column as a percent change
-def housing_formatter(city):
-    with open(f'data_misc/{city}.dat','r') as f:
-        f_read = f.read()
-    df = pd.read_json(f_read)
-    df.loc[:,'date'] = pd.to_datetime(df['date'])
-    df_sorted = df.sort_values(by='date')
-    df = pd.DataFrame({'Date':df_sorted['date'],'Value':df_sorted['value']})
-    df = df_percent_change(df,'Value')
-    currentdate = df['Date'].iloc[0]
-    loc_index = 1
-    c2 = str(df.columns[1]) #get the name of the second column
-    #forward fill loop
-    while currentdate<df.max(axis=0)[0]:    
-        if currentdate + timedelta(days=1) == df['Date'].iloc[loc_index]:
-            currentdate = df['Date'].iloc[loc_index]
-            loc_index+=1
-        else:
-            inc_date = currentdate + timedelta(days=1)
-            new_row = {'Date':inc_date,f'{c2}':df[f'{c2}'].iloc[loc_index-1]}
-            df = pd.concat([df,pd.DataFrame([new_row])],ignore_index=True)
-            currentdate = inc_date
+    df.loc[:,'Date'] = pd.to_datetime(df['Date'])
     df_sorted = df.sort_values(by='Date')
-    return df_sorted
+    df_sorted = df_sorted.groupby('Date').mean().reset_index()
+
+    if percent_columns is not None:
+        df_sorted.loc[:, percent_columns] = df_sorted[percent_columns].pct_change()
+        # Drop the first row with NaN values
+        df_sorted.drop(index=0, inplace=True)
+
+    currentdate = df_sorted['Date'].iloc[0]
+    loc_index = 1
+    day_counter = 0
+
+    if damping_columns is not None:
+        for col in damping_columns:
+            columns.remove(col)
+    if interpolate_columns is not None:
+        for col in interpolate_columns:
+            columns.remove(col)
+
+    df_new = df_sorted.drop(columns=interpolate_columns)
+    new_bool = False
+
+    if counter==True:
+        df_new['Counter'] = 0 #create a new row 'Counter' filled with zeros
+
+    if end_date is None:
+        end_date = df_sorted.max(axis=0)[0]
+
+    while currentdate<end_date:
+        #check to see if next date has data
+        if not columns and damping_columns is None:
+            new_bool = True
+            break
+
+        if currentdate + timedelta(days=1) == df_sorted['Date'].iloc[loc_index]:
+            currentdate = df_sorted['Date'].iloc[loc_index]
+            loc_index+=1
+            day_counter=0
+        else:
+            #loop through all target columns
+            inc_date = currentdate + timedelta(days=1)
+
+            if counter==True:
+                new_row = {'Date':inc_date,'Counter':day_counter}
+            else:
+                new_row = {'Date':inc_date}
+
+            if damping_columns is not None:
+                for column in damping_columns:
+                    value = df_sorted[column].iloc[loc_index-1]
+                    new_row[column] = inverse_sqrt_damping(float(value),day_counter,damping_constant) 
+            if columns:
+                for column in columns:
+                    new_row[column] = df_sorted[column].iloc[loc_index-1]
+            df_new = pd.concat([df_new,pd.DataFrame([new_row])],ignore_index=True)
+
+            currentdate = inc_date
+            day_counter+=1
+    
+    if interpolate_columns is not None:
+        interpolate_columns.insert(0,'Date')
+        interpolate_df = linear_interpolate(df_sorted[interpolate_columns])
+        if new_bool == False:
+            interpolate_df.drop(columns=['Date'],inplace=True)
+            df_new = pd.concat([df_new,interpolate_df],axis=1)
+        else:
+            df_new = interpolate_df
+
+    return df_new    
+
+#---------------------------------------------------------------------------------------------------
 
 
 #this function makes all your dataframe timelines line up. input a list of pandas data frames
@@ -248,9 +188,8 @@ def equity_formatter(symbol,nominal=False,api='yfinance'):
 
     if api == 'yfinance':
         df = pd.read_json(d)
-        price_df = df[['Date','Adj Close']]
-        price_df = price_df.rename(columns={'Adj Close':'Close'}) #I want the adjusted closing price
-        volume_df = df[['Date','Volume']]
+        df = df[['Date','Adj Close','Volume']]
+        df = df.rename(columns={'Adj Close':'Close'})
     elif api=='alphavantage':
         j = json.loads(d)
         dat = j['Time Series (Daily)'] #get rid of the MetaData classifier in the json file
@@ -258,61 +197,22 @@ def equity_formatter(symbol,nominal=False,api='yfinance'):
         df.reset_index(inplace=True) #this line makes it so that the date becomes an accessible column rather than the index
         column_names = ['Date','Open','High','Low','Close','Volume']
         df.columns = column_names #rename the columns
-        #split volume df and price data
-        volume_df = df[['Date','Volume']]
-        price_df = df[['Date','Close']] #I just want close for the first trial of this. I will come back and do stuff with high and low data as well
+        df = df[['Date','Close','Volume']] #I just want close for the first trial of this. I will come back and do stuff with high and low data as well
     else:
         print("Equity formatter error: supported APIs: yfinance, alphavantage")
 
     if nominal == False:    
-        price_df = percent_forward_fill(price_df)
+        df = forward_fill(df,percent_columns=['Close'],interpolate_columns=['Close'])
     elif nominal == True:
-        price_df = datetime_forward_fill(price_df)
+        df = forward_fill(df,interpolate_columns=['Close'])
     else:
         print("Error in functions.py: Equity formatter error!")
-
-    volume_df = datetime_forward_fill(volume_df)
-
     #print(f'Successfully formatted {symbol} data')
-    return [price_df,volume_df]
+    return df
 
 
 
-#for now I'm just going to return dfs of the report date, reportedEPS(as percent change) and the report date, surprise value (with counter forward fills)
-def earnings_formatter(symbol):
-    with open(f'data_equity/{symbol}_earnings.dat','r') as file:
-        d = file.read()
-    j = json.loads(d)
-    dat = j['quarterlyEarnings']
-    df = pd.DataFrame(dat)
-    #change reportedDate column to Date
-    df.rename(columns={'reportedDate':'Date'},inplace=True)
-    reported_eps = df.iloc[1:,[1,2]]#doing 1: for rows because most recent has missing values
-    surprise = df.iloc[1:,[1,4]]
-    #reported_eps_p = df_percent_change(reported_eps,'reportedEPS')
-    #try absolute reported eps with no counter
-    reported_eps = datetime_forward_fill(reported_eps)
-    surprise_fill = datetime_forward_fill(surprise)
-    return [reported_eps,surprise_fill]
 
-
-#if nominal is true, the data will be returned in absolute values, otherwise it will be returned as percent values
-def fed_formatter(code,nominal):
-    with open(f'data_fed/{code}.dat','r') as file:
-        d = file.read()
-    df = pd.read_json(d)
-    if nominal==True:
-        df_fill = datetime_forward_fill(df)
-    else:
-        df_fill = percent_forward_fill(df)
-    df_fill.loc[:,'Date'] = pd.to_datetime(df_fill['Date'])
-    #now remove all rows with dates before 1980 to make the code faster
-    df = df_fill.loc[df_fill['Date'] >= pd.to_datetime('1980-01-01')]
-    print(f'Successfully formatted {code} data')
-    return df_fill
-
-
-#
 def retail_sentiment_formatter(symbol):
     with open(f'data_equity/{symbol}_retail_sentiment.dat','r') as file:
         j = file.read()
@@ -432,7 +332,7 @@ def calculate_rsi(symbol: str, period: int = 14):
         rs = avg_gain / avg_loss
         return rs
     
-    equity_df = equity_formatter(symbol, nominal=True)[0]
+    equity_df = equity_formatter(symbol, nominal=True).drop(columns=['Volume'])
     equity_df['Close'] = pd.to_numeric(equity_df['Close'], errors='coerce')
     equity_df.dropna(subset=['Close'], inplace=True)
     
@@ -475,3 +375,8 @@ def sort_by_label(df:pd.DataFrame,target_column:str):
         label = groups[target_column].iloc[0]
         sequences.append((sequence_df,label))
     return sequences
+
+def append_formatter(data):
+    data = str(data)
+    output = data.replace('][',',')
+    return output

@@ -9,6 +9,7 @@ from tqdm.auto import tqdm
 import numpy as np
 import pandas as pd
 import functions as fn
+import data_compilation as dc
 
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.model_selection import train_test_split
