@@ -1,5 +1,6 @@
 import functions as fn
 import pandas as pd
+from datetime import datetime
 
 #df = fn.equity_formatter('DIS')
 #print(df)
@@ -68,5 +69,11 @@ print(new_df)
 '''
 
 #df = fn.housing_formatter('NewYork')
-df = fn.equity_formatter('UPS',nominal=True)
-print(df.head(30))
+
+
+df = {'Date':['2023-01-01','2023-01-07','2023-01-11'],'values':[5,7,9],'nums':[2,3,6],'pol':[8,20,30]}
+df=pd.DataFrame(df)
+df.loc[:,'Date'] = pd.to_datetime(df['Date'])
+#interpolated = fn.linear_interpolate(df)
+df_new = fn.data_fill(df,damping_columns=['values'],interpolate_columns=['pol'],end_date=datetime(2023,1,15))
+print(df_new)

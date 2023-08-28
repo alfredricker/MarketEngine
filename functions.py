@@ -49,22 +49,61 @@ def inverse_sqrt_damping(value:float,t:int,c:float): #c is damping constant, t i
     y = value/np.sqrt(1+(t*t/(c*c)))
     return y
 
-def linear_interpolate(df:pd.DataFrame):
-    # Generate a date range with daily intervals between the min and max datetime
-    date_range = pd.date_range(start=df['Date'].min(), end=df['Date'].max(), freq='D')
-    # Reindex the DataFrame with the generated date range
-    df = df.set_index('Date').reindex(date_range)
-    # Linearly interpolate the missing values
-    df.interpolate(method='linear', inplace=True)
-    df.index = df.index.set_names(['Date'])
-    df.reset_index(inplace=True)
-    return df
 
 
-def forward_fill(df:pd.DataFrame,
+def ffill(df:pd.DataFrame,end_date:datetime=None,na=False,damping=False,damping_constant:float=0.0): #standard forward fill of the last value of the dataframe up to a specified date
+    #the dataframe must already be in chronological order
+    if df.columns[0]!='Date':
+        print('fn.ffill() error: no Date in columns')
+        return -1
+    if na==True and damping==True:
+        print('fn.ffill() error: both damping and na cannot be true')
+        return -1
+    if end_date is not None:
+        if end_date<df['Date'].max():
+            print('fn.ffill() error: end_date is less than max date, just use default:None')
+        elif end_date==df['Date'].max():
+            end_date=None
+    
+    new_df = pd.DataFrame(columns=df.columns)
+
+    for i in range(len(df)):
+        current_row = df.iloc[i]
+        current_date = current_row['Date']
+        date_range = []
+
+        if i < len(df)-1:
+            next_row = df.iloc[i+1]
+            date_range = pd.date_range(current_date,next_row['Date'],inclusive='left')
+        else:
+            if end_date is None:
+                break
+            date_range = pd.date_range(current_date,end_date,inclusive='both')
+        
+        curr_values = [current_row[x] for x in df.columns[1:]]
+        na_values = [pd.NA for x in df.columns[1:]]
+        for date in date_range:
+            if damping:
+                t = (date-current_date).days
+                values = [inverse_sqrt_damping(float(current_row[x]),t,damping_constant) for x in df.columns[1:]]
+            elif na and date>current_date:
+                values = na_values
+            else:
+                values = curr_values
+
+            new_row = [date]+values
+            new_df.loc[len(new_df)] = new_row
+
+    if end_date is None:
+        new_df.loc[len(new_df)] = df.iloc[-1] #need this line because of the non-inclusive loop
+
+    return new_df
+
+
+
+def data_fill(df:pd.DataFrame,
                  target_columns=None, #columns that you would like to keep in the dataframe (default None keeps all columns)
                  percent_columns=None, #fill with percent change rather than nominal values
-                 counter:bool=False, #include a counter column, i.e. the number of days since a value has not changed
                  damping_columns=None, #include a damping function to damp missing values towards zero as time->inf
                  damping_constant:float=15.0, #this determines the convexity of the damping
                  interpolate_columns=None, #linearly interpolate the values rather than fill in with most recent value
@@ -77,7 +116,7 @@ def forward_fill(df:pd.DataFrame,
         target_list = target_columns.insert(0,'Date')
         df = df[target_list]
 
-    columns = list(df.columns[1:])
+    columns = list(df.columns)
     if percent_columns=='all':
         percent_columns = df.columns[1:] #don't want to remove these columns from the list because we still need to fill in this data
     elif damping_columns=='all':
@@ -92,67 +131,44 @@ def forward_fill(df:pd.DataFrame,
         # Drop the first row with NaN values
         df_sorted.drop(index=0, inplace=True)
 
-    currentdate = df_sorted['Date'].iloc[0]
-    loc_index = 1
-    day_counter = 0
-
     if damping_columns is not None:
         for col in damping_columns:
             columns.remove(col)
+
     if interpolate_columns is not None:
         for col in interpolate_columns:
             columns.remove(col)
 
-    df_new = df_sorted.drop(columns=interpolate_columns)
-    new_bool = False
-
-    if counter==True:
-        df_new['Counter'] = 0 #create a new row 'Counter' filled with zeros
-
+    max_date = df_sorted.max(axis=0)[0]
     if end_date is None:
-        end_date = df_sorted.max(axis=0)[0]
-
-    while currentdate<end_date:
-        #check to see if next date has data
-        if not columns and damping_columns is None:
-            new_bool = True
-            break
-
-        if currentdate + timedelta(days=1) == df_sorted['Date'].iloc[loc_index]:
-            currentdate = df_sorted['Date'].iloc[loc_index]
-            loc_index+=1
-            day_counter=0
-        else:
-            #loop through all target columns
-            inc_date = currentdate + timedelta(days=1)
-
-            if counter==True:
-                new_row = {'Date':inc_date,'Counter':day_counter}
-            else:
-                new_row = {'Date':inc_date}
-
-            if damping_columns is not None:
-                for column in damping_columns:
-                    value = df_sorted[column].iloc[loc_index-1]
-                    new_row[column] = inverse_sqrt_damping(float(value),day_counter,damping_constant) 
-            if columns:
-                for column in columns:
-                    new_row[column] = df_sorted[column].iloc[loc_index-1]
-            df_new = pd.concat([df_new,pd.DataFrame([new_row])],ignore_index=True)
-
-            currentdate = inc_date
-            day_counter+=1
+        end_date = max_date
+    if end_date<max_date:
+        print('forward_fill error: end_date must be >= max_date')
+        return -1
     
+    df_list = []
+    if columns:
+        df_std = df_sorted[columns]
+        df_list.append(ffill(df_std,end_date=end_date))
+
     if interpolate_columns is not None:
         interpolate_columns.insert(0,'Date')
-        interpolate_df = linear_interpolate(df_sorted[interpolate_columns])
-        if new_bool == False:
-            interpolate_df.drop(columns=['Date'],inplace=True)
-            df_new = pd.concat([df_new,interpolate_df],axis=1)
-        else:
-            df_new = interpolate_df
+        df_inter = df_sorted[interpolate_columns]
+        df_inter = ffill(df_inter,end_date=end_date,na=True)
+        df_inter.interpolate(method='linear',inplace=True)
+        df_list.append(df_inter)
 
-    return df_new    
+    if damping_columns is not None:
+        damping_columns.insert(0,'Date')
+        df_damp = df_sorted[damping_columns]
+        df_damp = ffill(df_damp,end_date=end_date,damping=True,damping_constant=damping_constant)
+        df_list.append(df_damp)
+    
+    df_merged = df_list[0]  # Initialize with the first DataFrame
+    for df in df_list[1:]:
+        df_merged = pd.merge(df_merged, df, on='Date', how='outer')
+
+    return df_merged    
 
 #---------------------------------------------------------------------------------------------------
 
@@ -163,20 +179,14 @@ def get_df_date_extrema(df_list):
     max_dates = []
     for df in df_list:
         df['Date'] = pd.to_datetime(df['Date'])
-        min = df['Date'].min(axis=0,skipna=True)#[0]
-        min_dates.append(min)
-        max = df['Date'].max(axis=0,skipna=True)
+        minimum = df['Date'].min(axis=0,skipna=True)#[0]
+        min_dates.append(minimum)
+        maximum = df['Date'].max(axis=0,skipna=True)
         #print(f'min_date:{min}, max_date:{max}')
-        max_dates.append(max)
+        max_dates.append(maximum)
     #now get the largest min dates and the smallest max dates
-    min_date = datetime(1900,1,1)
-    max_date = datetime(2024,1,1)
-    for min in min_dates:
-        if min>min_date:
-            min_date = min
-    for max in max_dates: 
-        if max<max_date:
-            max_date = max
+    min_date = min(min_dates)
+    max_date = max(max_dates)
     #print(f'[{min_date},{max_date}]')
     return [min_date,max_date]
 
@@ -201,10 +211,10 @@ def equity_formatter(symbol,nominal=False,api='yfinance'):
     else:
         print("Equity formatter error: supported APIs: yfinance, alphavantage")
 
-    if nominal == False:    
-        df = forward_fill(df,percent_columns=['Close'],interpolate_columns=['Close'])
+    if nominal == False:  
+        df = data_fill(df,percent_columns=['Close'],interpolate_columns=['Close'])
     elif nominal == True:
-        df = forward_fill(df,interpolate_columns=['Close'])
+        df = data_fill(df,interpolate_columns=['Close'])
     else:
         print("Error in functions.py: Equity formatter error!")
     #print(f'Successfully formatted {symbol} data')
@@ -217,7 +227,6 @@ def retail_sentiment_formatter(symbol):
     with open(f'data_equity/{symbol}_retail_sentiment.dat','r') as file:
         j = file.read()
     df = pd.read_json(j)
-    df.rename(columns={'date':'Date'},inplace=True)
     df.reset_index(inplace=True)
     df = df.fillna(0) #don't want to do forward fills
     df = df[['Date','sentiment']]
@@ -225,16 +234,19 @@ def retail_sentiment_formatter(symbol):
 
 
 #returns the (almost) proper df to start the neural network process
-def concatenate_data(df_list):
+def concatenate_data(df_list,start_date=None,end_date=None):
     min_max = get_df_date_extrema(df_list)
-    min_value = pd.to_datetime(min_max[0])
-    max_value = pd.to_datetime(min_max[1])
+    if start_date is None:
+        start_date = pd.to_datetime(min_max[0])
+    if end_date is None:
+        end_date = pd.to_datetime(min_max[1])
+
     df_filtered = []
     for df in df_list:
         df.loc[:,'Date'] = pd.to_datetime(df['Date'])
         df = df.sort_values(by='Date')
-        df = df[df['Date']>=min_value]
-        df = df[df['Date']<=max_value]
+        df = df[df['Date']>=start_date]
+        df = df[df['Date']<=end_date]
         #print(df.shape[0]) #they are all the same shape
         df_filtered.append(df)
     count = 0

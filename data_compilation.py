@@ -19,10 +19,11 @@ ndaq = ndaq.sort_values(by='Volume',ascending=False)
 quandl.ApiConfig.api_key = 'h3gFTxuuELMsc6zXU7_J'
 
 def data_appender(pth:str,
-                  get_function:function, #the function that fetches the data
+                  get_function:callable, #the function that fetches the data
                   symbol:str, #the string passed to the get function
                   start_date:datetime=None,
-                  end_date:datetime=datetime.now()):
+                  end_date:datetime=datetime.now(),
+                  concat:bool=True): #concat will be false for alphavantage data (because start and end date do nothing within those functions)
     with open(pth,'r') as f:
         r = f.read()
     df = pd.read_json(r,convert_dates=True)
@@ -30,11 +31,17 @@ def data_appender(pth:str,
     
     recent_date = df['Date'].iloc[-1]
     if start_date is None:
-        start_date = recent_date.to_pydatetime()
+        start_date = recent_date#datetime.strptime(str(recent_date),'%Y-%m-%d')
         start_date = start_date + timedelta(days=1)
     
+    print(start_date,'\n',end_date)
     data = get_function(symbol,start_date=start_date,end_date=end_date)
-    df = pd.concat([df,data],axis=0,ignore_index=True)
+
+    if concat==True:
+        df = pd.concat([df,data],axis=0,ignore_index=True)
+    else:
+        df = data
+    
     j = df.to_json(orient='records',date_format='iso')
     with open(pth,'w') as f:
         f.write(j)
@@ -49,30 +56,38 @@ def data_appender(pth:str,
 #EQUITY DATA
 #--------------------------------------------------------------
 #gets closing prices from yfinance
-def get_equity_data(symbol:str,start_date='2000-01-01',end_date='2023-06-01',api:str='yf'):
+def get_equity_data(symbol:str,start_date=datetime(2000,1,1),end_date=datetime(2023,6,1),api:str='yf',file_method='w'):
+    start_date=datetime.strftime(start_date,'%Y-%m-%d')
+    end_date=datetime.strftime(end_date,'%Y-%m-%d')
+
     if api == 'yf':
         data = yf.download(symbol,start=start_date,end=end_date)
         df = pd.DataFrame(data)
         df.reset_index(inplace=True)
         j = df.to_json(orient='records',date_format='iso')
-        with open(f'data_equity/{symbol}.dat', 'w') as file:
-            file.write(j)
+
+        if file_method is not None: 
+            with open(f'data_equity/{symbol}.dat', file_method) as file:
+                file.write(j)
 
     elif api=='alphavantage':
         url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&outputsize=full&apikey=1C3O71BAB7HJXTWZ"
         try:
             r = requests.get(url)
             data = r.json()
+            df = pd.DataFrame(data).reset_index()
+
             if 'Error Message' in data:
                 print(f"Error in alphavantage request for {symbol}")
-            else:
-                with open(f'data_equity/{symbol}_AV.dat','w') as file:
+            elif file_method is not None:
+                with open(f'data_equity/{symbol}_AV.dat',file_method) as file:
                     json.dump(data,file)             
         except:
             print("An error occured: could not request AlphaVantage data")
     
     else:
         print("Invalid api")
+    return df
 
 
 #create a list of tickers from csv data frame
@@ -85,7 +100,7 @@ def get_ticker_list(n:int=500,sort_by='Volume'):
 
 
 #using alpha vantage again
-def get_earnings(symbol:str,file_method='w'):
+def get_earnings(symbol:str,start_date=None,end_date=None,file_method='w'):
     url = f'https://www.alphavantage.co/query?function=EARNINGS&symbol={symbol}&apikey=1C3O71BAB7HJXTWZ'
     r = requests.get(url)
     j = r.json()
@@ -97,43 +112,61 @@ def get_earnings(symbol:str,file_method='w'):
     df.rename(columns={'reportedDate':'Date','surprisePercentage':'surprise'},inplace=True)
     data = df.to_json(orient='records',date_format='iso')
 
-    with open(f'data_equity/{symbol}_earnings.dat',file_method) as file:
-        file.write(data)
+    if file_method is not None:
+        with open(f'data_equity/{symbol}_earnings.dat',file_method) as file:
+            file.write(data)
     return df
 
 
-def get_balance_sheet(symbol:str):
+
+def earnings_init(symbol:str):
+    with open(f'data_equity/{symbol}_earnings.dat','r') as file:
+        r = file.read()
+    data = pd.read_json(r,convert_dates=True)
+    df = fn.data_fill(data,damping_columns=['surprise'])
+    return df
+
+
+
+def get_balance_sheet(symbol:str,start_date=None,end_date=None,file_method='w'):
     url = f'https://www.alphavantage.co/query?function=BALANCE_SHEET&symbol={symbol}&output_size=max&apikey=1C3O71BAB7HJXTWZ'
     r = requests.get(url)
     data = r.json()
-    with open(f'data_equity/{symbol}_balance_sheet.dat','w') as file:
-        json.dump(data,file)
-    return data
+    df = pd.DataFrame(data)
 
-def get_cashflow(symbol:str):
+    if file_method is not None:
+        with open(f'data_equity/{symbol}_balance_sheet.dat',file_method) as file:
+            json.dump(data,file)
+    return df
+
+
+def get_cashflow(symbol:str,start_date=None,end_date=None,file_method='w'):
     url = f'https://www.alphavantage.co/query?function=CASH_FLOW&symbol={symbol}&time_from=20050101T0000&apikey=1C3O71BAB7HJXTWZ'
     r = requests.get(url)
     data = r.json()
-    with open(f'data_equity/{symbol}_cashflow.dat','w') as file:
-        json.dump(data,file)
-    return data
+    df = pd.DataFrame(data)
+
+    if file_method is not None:
+        with open(f'data_equity/{symbol}_cashflow.dat',file_method) as file:
+            json.dump(data,file)
+    return df
 
 
 #history only goes as far back as 2016. I will probel have to integrate this into a different neural network that also utilizes a news sentiment model.
-def get_retail_sentiment(symbol:str,increment:int=20,start_date=datetime(2016,1,1),end_date=datetime(2023,6,1),method:str='quandl'):    
+def get_retail_sentiment(symbol:str,increment:int=20,start_date=datetime(2016,1,1),end_date=datetime(2023,6,1),method:str='quandl',file_method='w'):    
     #I have to make a list because the quandl api is annoying and calls by either a single date or an enumerated list of dates.
     #calling by each date individually takes a really long time so I have to go with this route
-    def day_string(start_date,length:int):
-        days_string = ','.join([(start_date + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(length)])
-        return days_string
+    def day_string(date_range):
+        return ','.join([date.strftime('%Y-%m-%d') for date in date_range])
 
     current_date = start_date
 
-    while current_date+timedelta(days=increment) < end_date:
-        if increment == 1:
-            date_string = current_date.strftime('%Y-%m-%d')
-        else:
-            date_string = day_string(current_date,increment)
+    while current_date <= end_date:  # Updated loop condition
+
+        # Generate a date range that covers the increment and ends on or before the end_date
+        date_range = [current_date + timedelta(days=i) for i in range(min(increment, (end_date - current_date).days + 1))]
+
+        date_string = day_string(date_range)
         
         if method == 'quandl':
             data = quandl.get_table('NDAQ/RTAT', date=date_string, ticker=symbol)
@@ -154,18 +187,23 @@ def get_retail_sentiment(symbol:str,increment:int=20,start_date=datetime(2016,1,
             df = data
         else:
             df = pd.concat([df,data],axis=0,ignore_index=True)
-        current_date = current_date + timedelta(days=increment)
+
+        current_date = date_range[-1] + timedelta(days=1)  # Move to the next date
         #print(current_date)
-        df = pd.concat([df,data],axis=0,ignore_index=True)
+        #df = pd.concat([df,data],axis=0,ignore_index=True)
 
     df['date'] = pd.to_datetime(df['date'])
     df.sort_values(by=['date'],inplace=True)
+    df.rename(columns={'date':'Date'},inplace=True)
+
     j = df.to_json(orient='records',date_format='iso')
-    with open(f'data_equity/{symbol}_retail_sentiment.dat','w') as file:
-        file.write(j)
+
+    if file_method is not None:
+        with open(f'data_equity/{symbol}_retail_sentiment.dat',file_method) as file:
+            file.write(j)
 
     print(f'Successfully saved {symbol} retail sentiment')
-    return j
+    return df
 
 
 def balance_sheet_formatter(symbol:str):
@@ -182,7 +220,7 @@ def earnings_init(symbol:str):
     with open(f'data_equity/{symbol}_earnings.dat','r') as file:
         r = file.read()
     data = pd.read_json(r,convert_dates=True)
-    df = fn.forward_fill(data,damping_columns=['surprise'])
+    df = fn.data_fill(data,damping_columns=['surprise'])
     return df
 
 
@@ -240,7 +278,7 @@ def terminate_and_run_proton(path,terminate=True,run=True):
 
 
 
-
+#not sure how to implement consistent start and end date functionality here 
 def get_bloomberg_data(symbol,max_page:int=30):
     df = {'Date':[],'Headline':[],'Summary':[]}
     for page in range(max_page):
@@ -409,16 +447,18 @@ def get_marketwatch_data(company,start_date:datetime=datetime(2016,1,1),end_date
 
     df = pd.DataFrame(data)
     j = df.to_json(orient='records',date_format='iso')
-    with open(f'web_scraping/{company}_marketwatch.dat',f'{file_method}') as file:
-        file.write(j)    
 
+    if file_method is not None:
+        with open(f'web_scraping/{company}_marketwatch.dat',f'{file_method}') as file:
+            file.write(j)    
+    return df
 
 
 
 #please don't change your website format barrons
 #pain. I get blocked before I can even get data before 2022... I'll have to use a try except
 #even more pain... the dates only go back to 2022 for Barron's. I'll have to limit my usage to new stocks
-def get_barrons_data(company,max_page:int=60):
+def get_barrons_data(company,max_page:int=60,file_method='w'):
     
     df = {'Date':[],'Headline':[],'Summary':[]}
     for page in range(max_page):
@@ -496,8 +536,11 @@ def get_barrons_data(company,max_page:int=60):
 
     df = pd.DataFrame(df)
     j = df.to_json(orient='records',date_format='iso')
-    with open(f'web_scraping/{company}_barrons.dat','w') as file:
-        file.write(j)
+
+    if file_method is not None:
+        with open(f'web_scraping/{company}_barrons.dat','w') as file:
+            file.write(j)
+    return df
 
 
 
@@ -572,12 +615,15 @@ def get_seekingalpha_analysis(symbol,start_date=datetime(2010,1,1),end_date=date
 
     df = pd.DataFrame(data)
     j = df.to_json(orient='records',date_format='iso')
-    with open(f'web_scraping/{symbol}_seekingalpha.dat',file_method) as file:
-        file.write(j)
+
+    if file_method is not None:
+        with open(f'web_scraping/{symbol}_seekingalpha.dat',file_method) as file:
+            file.write(j)
+    return df
 
 
 
-def get_cnbc_data(company, scroll: int = 30):
+def get_cnbc_data(company, scroll: int = 30,file_method='w'):
     options = webdriver.ChromeOptions()
     options.add_argument('--headless')  # Run Chrome in headless mode (no UI)
     driver = webdriver.Chrome(options=options)
@@ -615,10 +661,14 @@ def get_cnbc_data(company, scroll: int = 30):
     
     df = pd.DataFrame(df)
     j = df.to_json(orient='records',date_format='iso')
-    with open(f'web_scraping/{company}_cnbc.dat','w') as file:
-        file.write(j)
+
+    if file_method is not None:
+        with open(f'web_scraping/{company}_cnbc.dat','w') as file:
+            file.write(j)
 
     driver.quit()
+    return df
+
 
 #------------------------------------------------------------------------------
 #HUGGING FACE PRE TRAINED SENTIMENT MODEL
@@ -672,7 +722,8 @@ def news_formatter(symbol,
                    outlets=['bloomberg','marketwatch'],
                    start_date=pd.Timestamp('2010-01-01'), 
                    end_date=pd.Timestamp('2023-06-01'),
-                   prefix='news_sentiment'):
+                   file_method = 'w',
+                   file_prefix='news_sentiment'):
     df_list = []
     for outlet in outlets:
         df_list.append(news_roberta(symbol,outlet))
@@ -700,13 +751,21 @@ def news_formatter(symbol,
     # Convert the average Series back to a DataFrame
     #average_df = pd.concat([df.iloc[:,0],pd.DataFrame({'Headline': average_series})],axis=1)
 
-    df = fn.forward_fill(df,interpolate_columns='all')
+    df = fn.data_fill(df,interpolate_columns='all')
     j = df.to_json(orient='records',date_format='iso')
-    with open(f'data_misc/{prefix}_{symbol}.dat','w') as file:
-        file.write(j)
+    if file_method is not None:
+        with open(f'data_misc/{file_prefix}_{symbol}.dat',file_method) as file:
+            file.write(j)
     print(f'Successfully formatted {symbol} news data')
     return df
 
+
+
+def news_init(symbol,prefix='news_sentiment'):
+    with open(f'data_misc/{prefix}_{symbol}.dat','r') as file:
+        r = file.read()
+    df = pd.read_json(r)
+    return df
 
 
 
@@ -766,23 +825,31 @@ def trend_init(symbol:str):
 
 
 
+
 #--------------------------------------------------------------------
 #FED DATA & HOUSING DATA
 #--------------------------------------------------------------------
 #see https://data.nasdaq.com/data/FRED-federal-reserve-economic-data/documentation
-def get_fred_data(code):
-    code_get = quandl.get(f'FRED/{code}')
+def get_fed_data(code,start_date=datetime(1990,1,1),end_date=datetime(2023,6,1),file_method='w'):
+    start_date = datetime.strftime(start_date,'%Y-%m-%d')
+    end_date = datetime.strftime(end_date,'%Y-%m-%d')
+    
+    code_get = quandl.get(f'FRED/{code}',start_date=start_date,end_date=end_date)
     code_df = pd.DataFrame(code_get)
     new_df = {'Date':[],'Value':[]}
+
     for index,value_row in code_df.iterrows():
         arr = form_two_columns(value_row)
         new_df['Date'].append(arr[0])
         new_df['Value'].append(arr[1])
+
     code_df = pd.DataFrame(new_df)
     code_df['Date'] = pd.to_datetime(code_df['Date'])
     code_json = code_df.to_json(orient='records',date_format='iso')
-    with open(f'data_fed/{code}.dat','w') as file:
-        file.write(code_json)
+
+    if file_method is not None:
+        with open(f'data_fed/{code}.dat','w') as file:
+            file.write(code_json)
     print(f'Got {code} FED data')
     return code_df
 
@@ -796,19 +863,24 @@ def fed_formatter(code,nominal:bool=True,interpolate:bool=True):
 
     columns_list = list(df.columns[1:])
     if nominal==True:
-        df_fill = fn.forward_fill(df,interpolate_columns=columns_list)
+        df_fill = fn.data_fill(df,interpolate_columns=columns_list)
     else:
         columns_list = list(df.columns[1:])
-        df_fill = fn.forward_fill(df,percent_columns=columns_list,interpolate_columns=columns_list)
+        df_fill = fn.data_fill(df,percent_columns=columns_list,interpolate_columns=columns_list)
     print(f'Successfully formatted {code} data')
     return df_fill
 
 
-def fed_init():
-    fed_data = {'GDP':fed_formatter('GDP',nominal=False),'CPI':fed_formatter('CPIAUCSL',nominal=False),
-            'DFF':fed_formatter('DFF',interpolate=False),
-            'M1':fed_formatter('M1',nominal=False),'M1V':fed_formatter('M1V'),
-            'INDPRO':fed_formatter('INDPRO',nominal=False),'UNRATE':fed_formatter('UNRATE',interpolate=False)}
+def fed_init(code_list):
+    fed_params = {'GDP':(False,True),'CPIAUCSL':(False,True),
+            'DFF':(True,False),'M1':(False,True),'M1V':(True,True),
+            'INDPRO':(False,True),'UNRATE':(True,False)}
+    
+    fed_data = {}
+
+    for code in code_list:
+        fed_data[code] = fed_formatter(code,nominal=fed_params[code][0],interpolate=fed_params[code][1])
+
     print("Initialized fed data")
     return fed_data
 
@@ -817,32 +889,45 @@ def fed_init():
 city_ids = {'NY':394913,'LA':753899,'Chicago':394463}
 
 
-def get_housing_data(city,id):
-    metro = quandl.get_table('ZILLOW/DATA', indicator_id='ZSFH', region_id=id)
+def get_housing_data(city,start_date=datetime(2000,1,1),end_date=datetime(2023,6,1),file_method='w'):
+    #start_date = datetime.strftime(start_date,'%Y-%m-%d')
+    #end_date = datetime.strftime(end_date,'%Y-%m-%d')
+
+    city_id = city_ids[city]
+    
+    metro = quandl.get_table('ZILLOW/DATA', indicator_id='ZSFH', region_id=city_id)
     df = pd.DataFrame(metro)
+    df.rename(columns={'date':'Date','value':city},inplace=True)
+    df.loc[:,'Date'] = pd.to_datetime(df['Date'])
+    df.sort_values(by='Date')
+    df = df.loc[df['Date']>=start_date]
+    df = df.loc[df['Date']<=end_date]
+
     j = df.to_json(orient='records',date_format='iso')
     j.strip('[]')
-    with open(f'data_misc/{city}.dat','w') as file:
-        file.write(j)
-    return 0
+
+    if file_method is not None:
+        with open(f'data_misc/housing_{city}.dat',file_method) as file:
+            file.write(j)
+    return df
 
 
 def housing_formatter(city:str):
-    with open(f'data_misc/{city}.dat','r') as f:
+    with open(f'data_misc/housing_{city}.dat','r') as f:
         f_read = f.read()
     df = pd.read_json(f_read)
-    df = df[['date','value']]
-    df.rename(columns={'date':'Date','value':city},inplace=True)
-    output_df = fn.forward_fill(df,percent_columns=[city],interpolate_columns=[city])
+    df = df[['Date',city]]
+    output_df = fn.data_fill(df,percent_columns=[city],interpolate_columns=[city])
     return output_df
 
 
 def housing_init():
-    ny = housing_formatter('NewYork')
-    la = housing_formatter('LosAngeles')
+    ny = housing_formatter('NY')
+    la = housing_formatter('LA')
     chicago = housing_formatter('Chicago')
     print("Initialized housing data")
-    return (ny,la,chicago)
+    housing_dict = {'NY':ny,'LA':la,'Chicago':chicago}
+    return housing_dict
 
 
 
@@ -862,7 +947,8 @@ cik = {'AAL':6201,'AAPL':320193,'AMD':2488,
        'NVDA':1045810,'QCOM':804328,'ROKU':1428439,'RUN':1469367,'SBUX':829224,'SHOP':1594805,
        'T':732717,'TGT':27419,'TSLA':1318605,'UPS':1090727,'WMT':104169}
 
-def get_insider_trading_data(symbol:str,max_page:int=6):
+
+def get_insider_trading_data(symbol:str,max_page:int=6,start_date=datetime(2005,1,1),end_date=datetime(2023,6,1),file_method='w'):
     #I'm thinking about doing percentage of securities owned vs acquired or sold
     pages = []
     for n in range(max_page):
@@ -907,10 +993,21 @@ def get_insider_trading_data(symbol:str,max_page:int=6):
             df['InsiderFlow'].append(change)
     
     df = pd.DataFrame(df)
+    df.loc[:,'Date'] = pd.to_datetime(df['Date'])
+    df.sort_values(by='Date')
+
+    #start_date = pd.to_datetime(datetime.strftime(start_date,'%Y-%m-%d'))
+    #end_date = pd.to_datetime(datetime.strftime(end_date,'%Y-%m-%d'))
+    df = df.loc[df['Date']>=start_date]
+    df = df.loc[df['Date']<=end_date]
+
     j = df.to_json(orient='records',date_format='iso')
-    with open(f'data_misc/insider_{symbol}.dat','w') as file:
-        file.write(j)
+
+    if file_method is not None:
+        with open(f'data_misc/insider_{symbol}.dat',file_method) as file:
+            file.write(j)
     return df
+
 
 def insider_init(symbol:str):
     with open(f'data_misc/insider_{symbol}.dat','r') as file:
@@ -918,15 +1015,9 @@ def insider_init(symbol:str):
     data = pd.read_json(r,convert_axes=True)
     #replace all rows where insider_flow==1 to =0
     data['InsiderFlow'] = data['InsiderFlow'].replace(1,0)
-    df = fn.multiple_date_fill(data)
+    df = fn.data_fill(data)
     return df
 
-def earnings_init(symbol:str):
-    with open(f'data_equity/{symbol}_earnings.dat','r') as file:
-        r = file.read()
-    data = pd.read_json(r,convert_dates=True)
-    df = fn.forward_fill(data,damping_columns=['surprise'])
-    return df
 
 
 
@@ -941,96 +1032,103 @@ def earnings_init(symbol:str):
 #MASTER INITIALIZERS
 #----------------------------------------------------------------------------------
 
-#surprise column contains a NaN value which interrupts the model as of now.
-def equity_init(stocks_list):
-    df_list = [] #list of data frames that will be concatenated by row at the end of the function
-
-    for i in range(len(stocks_list)):    
-        stock_sym = stocks_list[i]
-        print(f'Initializing {stocks_list[i]} data...')
-        stock = fn.equity_formatter(stock_sym)
-        stock_close = stock[0]
-        stock_volume = stock[1]
-        stock_rsi = fn.calculate_rsi(stock_sym)
-        
-        stock_trend = trend_init(stock_sym)
-        stock_earnings = earnings_init(stock_sym)
-
-        insider = insider_init(stock_sym)
-        retail_df = fn.retail_sentiment_formatter(stock_sym)
-        news_sentiment = news_init(stock_sym)
-        alpha = news_init(stock_sym,prefix='seekingalpha')
-
-        fed_data = fed_init()
-        gdp = fed_data['GDP']
-        cpi = fed_data['CPI']
-        m1 = fed_data['M1']
-        m1v = fed_data['M1V']
-        dff = fed_data['DFF']
-        unrate = fed_data['UNRATE']
-
-        ny = housing_init()[0]
-
-        #CONCATENATE ALL DATA INTO A SINGLE LARGE DATAFRAME
-        data_list = [stock_close,stock_volume,stock_trend,stock_rsi,stock_earnings,
-                     gdp,cpi,dff,m1,unrate,ny,insider,retail_df,news_sentiment,alpha]
-        df = fn.concatenate_data(data_list)
-        df['Close_Tmr'] = df['Close'].shift(-1)
-        df = df.drop(index=df.index[-1]) #drop the last row because the above shift method will result in NaN values
-        df.set_index('Date',inplace=True)
-        df_list.append(df)
-    if len(df_list) < 2:
-        data = df_list[0]
-    else:    
-        data = pd.concat(df_list,axis=0,ignore_index=True)
-    data.to_csv(f'csv_data/{stocks_list[0]}.csv')
-    print(f'Initialized equity data')
-    return data
 #IMPORTANT: since I want to look at how the present day data effects the closing price of tomorrow, I have to copy the close column, and shift it up 1 position in a new row
-
-
-def news_init(symbol,prefix='news_sentiment'):
-    with open(f'data_misc/{prefix}_{symbol}.dat','r') as file:
-        r = file.read()
-    df = pd.read_json(r)
-    return df
-
-
-def sentiment_init(stocks_list):
-    df_list = []    
+def training_data_init(stocks_list,
+                   city_list = [],
+                   fed_list = [],
+                   news_prefixes = ['news_sentiment','seekingalpha'], #this will typically just be [news_sentiment,seekingalpha]
+                   rsi = True, #include RSI momentum indicator
+                   earnings = True,
+                   retail_sentiment=True,
+                   google_trend=True,
+                   insider_data=True,
+                   start_date=None,
+                   end_date=None,
+                   file_name='TRAINING'):
+    
+    df_list = []
+    if city_list:
+        housing_data = housing_init()
+    if fed_list:
+        fed_data = fed_init()
+        
     for i in range(len(stocks_list)):
+        data_list = []
         sym = stocks_list[i]
-        news_sentiment = news_init(sym)
-        alpha = news_init(sym,prefix='seekingalpha')
-        stock_trend = trend_init(sym)
 
         stock = fn.equity_formatter(sym)
-        stock_close = stock[0]
-        stock_volume = stock[1]
-        stock_rsi = fn.calculate_rsi(sym)
+        data_list.append(stock)
 
-        insider = insider_init(sym)
-        retail_df = fn.retail_sentiment_formatter(sym)
+        if earnings:
+            stock_earnings = earnings_init(sym)
+            data_list.append(stock_earnings)
 
-        stock_earnings = earnings_init(sym)
+        if google_trend:
+            trend = trend_init(sym)
+            data_list.append(trend)
 
-        fed_data = fed_init()
-        dff = fed_data['DFF']
+        if news_prefixes:
+            for prefix in news_prefixes: 
+                data_list.append(news_init(sym,prefix=prefix))
 
-        data_list = [stock_close,stock_volume,stock_earnings,
-                     stock_trend,news_sentiment,alpha,stock_rsi,insider,retail_df,dff]
-        df = fn.concatenate_data(data_list)
+        if rsi:
+            stock_rsi = fn.calculate_rsi(sym)
+            data_list.append(stock_rsi)
+
+        if insider_data:
+            insider = insider_init(sym)
+            data_list.append(insider)
+
+        if retail_sentiment:
+            retail_df = fn.retail_sentiment_formatter(sym)
+            data_list.append(retail_df)
+        
+        for code in fed_list:
+            data_list.append(fed_data[code])
+
+        for city in city_list:
+            data_list.append(housing_data[city])
+
+        if len(data_list)<2:
+            df=data_list[0]
+        else:
+            df = fn.concatenate_data(data_list,start_date=start_date,end_date=end_date)
+
         df['Close_Tmr'] = df['Close'].shift(-1)
         df = df.drop(index=df.index[-1]) #drop the last row because the above shift method will result in NaN values
         df.set_index('Date',inplace=True)
         print(f'Finished formatting {sym}')
         df_list.append(df)
 
-    data = pd.concat(df_list,axis=0,ignore_index=True)
-    data.to_csv('csv_data/CLASSIFIER_1.csv')
+    if len(df_list)<2:
+        data = df_list[0]
+    else:
+        data = pd.concat(df_list,axis=0,ignore_index=True)
+    data.to_csv(f'csv_data/{file_name}.csv')
     print(f'Initialized sentiment data')
     return data
 
+
+
+def eval_data_init(stocks_list,
+                   city_list = [],
+                   fed_list = [],
+                   news_prefixes = ['news_sentiment','seekingalpha'], #this will typically just be [news_sentiment,seekingalpha]
+                   rsi = True, #include RSI momentum indicator
+                   earnings = True,
+                   retail_sentiment=True,
+                   google_trend=True,
+                   insider_data=True,
+                   hist=256): #hist is the number of days of history you want to include in the evaluation tensor
+    return 0
+
+
+
+
+
+#----------------------------------------------------------------------------
+#EXECUTABLE CODE
+#----------------------------------------------------------------------------
 
 #sentiment_init(retail_stocks,retail_companies)
 #equity_init(model_stocks,model_companies)
@@ -1038,3 +1136,12 @@ def sentiment_init(stocks_list):
 model_stocks = ['AAL','AAPL','AMD','AMZN','BAC','BANC','BRK-B','CGNX','UPS','DELL','DIS',
                 'INTC','GE','TGT','MCD','MSFT','NVDA','NFLX','QCOM','ROKU','RUN','SBUX','WMT','GOOG','CSCO']
 #sentiment_init(model_stocks)
+pth = f'data_equity/{model_stocks[0]}_retail_sentiment.dat'
+#data_appender(pth,get_retail_sentiment,model_stocks[0])
+
+
+training_data_init(model_stocks,
+                   city_list=['NY'],
+                   fed_list=['DFF','UNRATE'],
+                   end_date=datetime(2023,6,1)
+                   )
