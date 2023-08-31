@@ -17,3 +17,6 @@ selenium
 scikit-learn
 sympy
 yfinance
+seaborn
+matplotlib
+re

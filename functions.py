@@ -44,11 +44,49 @@ def get_json_date_extrema(file_path):
     return arr
 
 #--------------------------------------------------------------------------------------------------------
+'''
+def find_closest_date(df, target_date, direction='both'):
+    if 'Date' not in df.columns:
+        raise ValueError("DataFrame must have a 'Date' column.")
+    
+    target_date = pd.to_datetime(target_date)
+    
+    if direction == 'both':
+        closest_date = df['Date'].iloc[(df['Date'] - target_date).abs().idxmin()]
+    elif direction == 'left':
+        closest_date = df['Date'].iloc[(df['Date'] - target_date).apply(lambda x: x if x <= pd.Timedelta(0) else pd.NaT).idxmax()]
+    elif direction == 'right':
+        closest_date = df['Date'].iloc[(df['Date'] - target_date).apply(lambda x: x if x >= pd.Timedelta(0) else pd.NaT).idxmin()]
+    else:
+        raise ValueError("Invalid direction. Choose 'left', 'right', or 'both'.")
+
+    return closest_date
+'''
+def find_closest_date(df, target_date, direction='closest'):
+    if direction not in ['left', 'right', 'closest']:
+        raise ValueError("Invalid direction. Valid values are 'left', 'right', or 'closest'.")
+
+    # Convert the 'target_date' to a datetime object
+    target_date = pd.to_datetime(target_date)
+
+    # Get the date column from the DataFrame
+    date_column = 'Date'  # Assuming the date column is the first column
+
+    # Find the index of the closest date
+    if direction == 'left':
+        closest_idx = (df[date_column] <= target_date).idxmax()
+    elif direction == 'right':
+        closest_idx = (df[date_column] >= target_date).idxmin()
+    else:  # direction == 'closest'
+        closest_idx = (df[date_column] - target_date).abs().idxmin()
+
+    closest_date = df.loc[closest_idx, date_column]
+    return closest_date
+
 
 def inverse_sqrt_damping(value:float,t:int,c:float): #c is damping constant, t is number of days since initial information
     y = value/np.sqrt(1+(t*t/(c*c)))
     return y
-
 
 
 def ffill(df:pd.DataFrame,end_date:datetime=None,na=False,damping=False,damping_constant:float=0.0): #standard forward fill of the last value of the dataframe up to a specified date
@@ -107,6 +145,7 @@ def data_fill(df:pd.DataFrame,
                  damping_columns=None, #include a damping function to damp missing values towards zero as time->inf
                  damping_constant:float=15.0, #this determines the convexity of the damping
                  interpolate_columns=None, #linearly interpolate the values rather than fill in with most recent value
+                 start_date=None, #this is to shrink the data for eval mode and speed up the process
                  end_date=None): #the date to fill the data up to. default is the max date in the df
     #this function takes in a pandas data frame and fills in all missing daily values by taking the most recent value
     if 'Date' != df.columns[0]:
@@ -122,9 +161,34 @@ def data_fill(df:pd.DataFrame,
     elif damping_columns=='all':
         damping_columns = df.columns[1:]
 
-    df.loc[:,'Date'] = pd.to_datetime(df['Date'])
+    #date initialization
+    df.loc[:,'Date'] = pd.to_datetime(df['Date'],errors='coerce')
+    df = df.dropna(subset='Date')
     df_sorted = df.sort_values(by='Date')
     df_sorted = df_sorted.groupby('Date').mean().reset_index()
+
+    max_date = df_sorted['Date'].iloc[-1]
+    min_date = df_sorted['Date'].iloc[0]
+
+    if end_date is None:
+        end_date = max_date
+    else:
+        if end_date<max_date:
+            end_date = find_closest_date(df_sorted,end_date,direction='right')
+            df_sorted = df_sorted.loc[df_sorted['Date']<=end_date]
+
+    if start_date is not None:
+        if start_date<=min_date:
+            filter_date=min_date
+        else:
+            filter_date = find_closest_date(df_sorted,start_date,direction='left')
+            if percent_columns is not None: #this is necessary because the percent column formatter drops the first Na row
+                prev_date = filter_date - timedelta(days=1) #this line makes sure that the find_closest function doesn't repeat the previous start date
+                filter_date = find_closest_date(df_sorted,prev_date,direction='left')
+
+        df_sorted = df_sorted.loc[df_sorted['Date']>=filter_date]
+
+    df_sorted.reset_index(inplace=True,drop=True)
 
     if percent_columns is not None:
         df_sorted.loc[:, percent_columns] = df_sorted[percent_columns].pct_change()
@@ -138,13 +202,6 @@ def data_fill(df:pd.DataFrame,
     if interpolate_columns is not None:
         for col in interpolate_columns:
             columns.remove(col)
-
-    max_date = df_sorted.max(axis=0)[0]
-    if end_date is None:
-        end_date = max_date
-    if end_date<max_date:
-        print('forward_fill error: end_date must be >= max_date')
-        return -1
     
     df_list = []
     if columns:
@@ -167,6 +224,10 @@ def data_fill(df:pd.DataFrame,
     df_merged = df_list[0]  # Initialize with the first DataFrame
     for df in df_list[1:]:
         df_merged = pd.merge(df_merged, df, on='Date', how='outer')
+    
+    if start_date is not None:
+        df_merged = df_merged.loc[df_merged['Date']>=start_date]
+        df_merged.reset_index(inplace=True,drop=True)
 
     return df_merged    
 
@@ -185,14 +246,14 @@ def get_df_date_extrema(df_list):
         #print(f'min_date:{min}, max_date:{max}')
         max_dates.append(maximum)
     #now get the largest min dates and the smallest max dates
-    min_date = min(min_dates)
-    max_date = max(max_dates)
+    min_date = max(min_dates)
+    max_date = min(max_dates)
     #print(f'[{min_date},{max_date}]')
     return [min_date,max_date]
 
 
 #properly reads and formats the pd dataframe, forward fills the data, and splits data into a [price,volume] data list
-def equity_formatter(symbol,nominal=False,api='yfinance'):
+def equity_formatter(symbol,nominal=False,api='yfinance',start_date=None,end_date=None):
     with open(f'data_equity/{symbol}.dat','r') as file: #open the necessary equity file
         d = file.read()
 
@@ -212,9 +273,9 @@ def equity_formatter(symbol,nominal=False,api='yfinance'):
         print("Equity formatter error: supported APIs: yfinance, alphavantage")
 
     if nominal == False:  
-        df = data_fill(df,percent_columns=['Close'],interpolate_columns=['Close'])
+        df = data_fill(df,percent_columns=['Close'],interpolate_columns=['Close'],start_date=start_date,end_date=end_date)
     elif nominal == True:
-        df = data_fill(df,interpolate_columns=['Close'])
+        df = data_fill(df,interpolate_columns=['Close'],start_date=start_date,end_date=end_date)
     else:
         print("Error in functions.py: Equity formatter error!")
     #print(f'Successfully formatted {symbol} data')
@@ -223,13 +284,15 @@ def equity_formatter(symbol,nominal=False,api='yfinance'):
 
 
 
-def retail_sentiment_formatter(symbol):
+def retail_sentiment_formatter(symbol,start_date=None,end_date=None):
     with open(f'data_equity/{symbol}_retail_sentiment.dat','r') as file:
         j = file.read()
     df = pd.read_json(j)
+    #df = df.fillna(0)
     df.reset_index(inplace=True)
-    df = df.fillna(0) #don't want to do forward fills
     df = df[['Date','sentiment']]
+
+    #df = data_fill(df,damping_columns='all') #don't want to do forward fills
     return df
 
 
@@ -245,12 +308,16 @@ def concatenate_data(df_list,start_date=None,end_date=None):
     for df in df_list:
         df.loc[:,'Date'] = pd.to_datetime(df['Date'])
         df = df.sort_values(by='Date')
-        df = df[df['Date']>=start_date]
-        df = df[df['Date']<=end_date]
+        df = df.loc[df['Date']>=start_date]
+        df = df.loc[df['Date']<=end_date]
         #print(df.shape[0]) #they are all the same shape
         df_filtered.append(df)
-    count = 0
-    for df in df_filtered:
+    #count = 0
+    df_merged = df_filtered[0]  # Initialize with the first DataFrame
+    for df in df_filtered[1:]:
+        df_merged = pd.merge(df_merged, df, on='Date', how='outer')
+
+        '''
         if count==0:
             result_df = df.copy()
             result_df = result_df.reset_index(drop=True)
@@ -259,7 +326,8 @@ def concatenate_data(df_list,start_date=None,end_date=None):
             df = df.reset_index(drop=True)
             df_new = df.iloc[:,1:]
             result_df = pd.concat([result_df,df_new],axis=1)
-    return result_df
+        '''
+    return df_merged
 
 
 #make it so that the target column has an equal number of ones and zeros. Note that the transform_to_binary function must be ran first
@@ -332,7 +400,7 @@ def count_ones_and_zeros(array):
     return zeros_count,ones_count
 
 
-def calculate_rsi(symbol: str, period: int = 14):
+def calculate_rsi(symbol: str, period: int = 14,start_date=None,end_date=None):
     def relative_strength(data):
         delta = data.diff()
         gain = delta.where(delta > 0, 0)
@@ -352,6 +420,13 @@ def calculate_rsi(symbol: str, period: int = 14):
     rsi = 100 - (100 / (1 + rs))
     
     equity_df['RSI'] = rsi
+
+    #i could definitely make this more efficient
+    if start_date is not None:
+        equity_df = equity_df.loc[equity_df['Date']>=start_date]
+    if end_date is not None:
+        equity_df = equity_df.loc[equity_df['Date']<=end_date]
+
     rsi_df = equity_df.drop(columns=['Close'])  # Drop the 'Close' column
     return rsi_df
 
