@@ -23,7 +23,7 @@ from torchmetrics import Accuracy
 pl.seed_everything(45) #make results reproducible
 # Load and preprocess your data
 #df = pd.read_csv('DATA_SENTIMENT.csv')
-df = pd.read_csv('csv_tests/TRAINING.csv')
+df = pd.read_csv('csv_data/TRAINING-9-1.csv')
 df = df.iloc[:,1:] #remove the unwanted index column
 df.fillna(value=0,inplace=True)
 size = df.shape[1]
@@ -52,6 +52,28 @@ scaler_X = StandardScaler()
 X_train = scaler_X.fit_transform(X_train)
 #print(X_train[:10])
 X_test = scaler_X.transform(X_test)
+
+#reshape into sequences
+sequence_length = 16
+num_feat = size-1
+X_train_reshaped = np.empty((X_train.shape[0], num_feat * sequence_length))
+X_test_reshaped = np.empty((X_test.shape[0], num_feat * sequence_length))
+
+# Loop through the original data and reshape it
+for i in range(sequence_length, X_train.shape[0]):
+    X_train_reshaped[i, :] = X_train[i - sequence_length:i, :].flatten()
+
+for i in range(sequence_length, X_test.shape[0]):
+    X_test_reshaped[i, :] = X_test[i - sequence_length:i, :].flatten()
+
+print(X_train_reshaped.shape)
+print(X_test_reshaped.shape)
+print(Y_train.shape)
+print(Y_test.shape)
+X_train = X_train_reshaped
+X_test = X_test_reshaped
+
+
 #Time to convert to PyTorch tensors
 X_train = torch.tensor(X_train,dtype=torch.float32)
 X_test = torch.tensor(X_test,dtype=torch.float32)
@@ -61,30 +83,34 @@ Y_test = torch.tensor(Y_test,dtype=torch.long)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class TimeSeriesDataset(Dataset):
-    def __init__(self, X, Y):
+    def __init__(self, X, Y, sequence_length):
         self.X = X
         self.Y = Y
+        self.sequence_length = sequence_length
 
     def __len__(self):
-        return len(self.X)
+        return len(self.X)-self.sequence_length#+1?
 
     def __getitem__(self, i):
-        x = self.X[i].to(device)
-        y = self.Y[i].to(device)
+        #x = self.X[i].to(device)
+        #y = self.Y[i].to(device)
+        x = self.X[i:i+self.sequence_length].to(device)
+        y = self.Y[i+self.sequence_length].to(device)
         return x,y
     
 class TimeSeriesDataModule(pl.LightningDataModule):
-    def __init__(self, X_train, X_test, Y_train, Y_test, batch_size):
+    def __init__(self, X_train, X_test, Y_train, Y_test, batch_size, sequence_length):
         super().__init__()
         self.X_train = X_train
         self.X_test = X_test
         self.Y_train = Y_train
         self.Y_test = Y_test
         self.batch_size = batch_size
+        self.sequence_length = sequence_length
     
     def setup(self, stage=None):
-        self.train_dataset = TimeSeriesDataset(self.X_train,self.Y_train)
-        self.test_dataset = TimeSeriesDataset(self.X_test,self.Y_test)
+        self.train_dataset = TimeSeriesDataset(self.X_train,self.Y_train,self.sequence_length)
+        self.test_dataset = TimeSeriesDataset(self.X_test,self.Y_test,self.sequence_length)
 
     def train_dataloader(self):
         return DataLoader(
@@ -110,7 +136,7 @@ class TimeSeriesDataModule(pl.LightningDataModule):
     
 num_epochs = 25
 
-data_module = TimeSeriesDataModule(X_train,X_test,Y_train,Y_test,batch_size=batch_size)
+data_module = TimeSeriesDataModule(X_train,X_test,Y_train,Y_test,batch_size=batch_size,sequence_length=sequence_length)
 
 # Define your LSTM classifier
 
@@ -119,7 +145,7 @@ class LSTMClassifier(torch.nn.Module):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_stacked_layers = num_stacked_layers
-        self.lstm = torch.nn.LSTM(input_size=num_features, hidden_size=hidden_size, num_layers=num_stacked_layers, batch_first=True) #dropout = 0.75
+        self.lstm = torch.nn.LSTM(input_size=num_features*sequence_length, hidden_size=hidden_size, num_layers=num_stacked_layers, batch_first=True) #dropout = 0.75
         self.classifier = torch.nn.Linear(hidden_size,num_classes)
 
     def forward(self, x):
@@ -207,38 +233,45 @@ trainer = pl.Trainer(
     default_root_dir='CHECKPOINTS/'
 )
 
-trainer.fit(model,data_module)
-torch.save(model.state_dict(),'CHECKPOINTS/MODEL.ckpt')
 
-#get the numpy array of the predicted values
-with torch.no_grad():
-    predicted = model(X_train)[1]
-    predicted_test = model(X_test)[1]
+def model_trainer():
+    trainer.fit(model,data_module)
+    torch.save(model.state_dict(),'CHECKPOINTS/CLASSIFIER-9-1.ckpt')
 
-from sklearn.metrics import confusion_matrix
-import matplotlib.pyplot as plt
-import seaborn as sns
+    #get the numpy array of the predicted values
+    with torch.no_grad():
+        predicted = model(X_train)[1]
+        predicted_test = model(X_test)[1]
 
-threshold = 0.50
-predicted_probs = torch.softmax(predicted_test, dim=1)  # Apply softmax to get class probabilities
-predicted_labels = (predicted_probs[:, 1] > threshold).long() 
-# Calculate confusion matrix
-cm = confusion_matrix(Y_test.numpy(), predicted_labels)
+    from sklearn.metrics import confusion_matrix
+    import matplotlib.pyplot as plt
+    import seaborn as sns
 
-# Plot confusion matrix using seaborn
-plt.figure(figsize=(8, 6))
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Class 0', 'Class 1'], yticklabels=['Class 0', 'Class 1'])
-plt.xlabel('Predicted')
-plt.ylabel('Actual')
-plt.title('Confusion Matrix')
-plt.show()
+    threshold = 0.50
+    predicted_probs = torch.softmax(predicted_test, dim=1)  # Apply softmax to get class probabilities
+    predicted_labels = (predicted_probs[:, 1] > threshold).long() 
+    # Calculate confusion matrix
+    cm = confusion_matrix(Y_test.numpy(), predicted_labels)
 
-#get the numpy array of the predicted values
+    # Plot confusion matrix using seaborn
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Class 0', 'Class 1'], yticklabels=['Class 0', 'Class 1'])
+    plt.xlabel('Predicted')
+    plt.ylabel('Actual')
+    plt.title('Confusion Matrix')
+    plt.show()
 
-data = {
-    'Actual': Y_test.numpy(),
-    'Predicted': predicted_labels
-}
+    #get the numpy array of the predicted values
 
-df_comparison = pd.DataFrame(data)
-df_comparison.to_csv('csv_tests/comparison_classifier.csv')
+    data = {
+        'Actual': Y_test.numpy(),
+        'Predicted': predicted_labels
+    }
+
+    df_comparison = pd.DataFrame(data)
+    df_comparison.to_csv('csv_tests/comparison_classifier-9-1.csv')
+
+model_trainer()
+
+
+

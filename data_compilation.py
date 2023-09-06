@@ -25,9 +25,16 @@ def data_appender(pth:str,
                   end_date:datetime=datetime.now(),
                   concat:bool=True, #concat will be false for alphavantage data (because start and end date do nothing within those functions)
                   overwrite = True):  
-    with open(pth,'r') as f:
-        r = f.read()
-
+    try:
+        with open(pth,'r') as f:
+            r = f.read()
+    except: #if you are not appending, instead create a new file
+        start = start_date-timedelta(days=92)
+        df = get_function(symbol,start_date=start,end_date=end_date,file_method=None)
+        j = df.to_json(orient='records',date_format='iso')
+        with open(pth,'w') as f:
+            f.write(j)
+        return df
 
     df = pd.read_json(r,convert_dates=True)
     if "seekingalpha" in pth: #this is temporary because i didn't originally include this line in my seekingalpha function
@@ -521,31 +528,50 @@ def get_marketwatch_data(company,start_date:datetime=datetime(2016,1,1),end_date
 #please don't change your website format barrons
 #pain. I get blocked before I can even get data before 2022... I'll have to use a try except
 #even more pain... the dates only go back to 2022 for Barron's. I'll have to limit my usage to new stocks
-def get_barrons_data(company,max_page:int=60,file_method='w'):
+def get_barrons_data(company,max_page:int=60,start_date=datetime(2016,1,1),end_date=datetime(2023,6,1),time_interval:int=4,file_method='w'):
     
     df = {'Date':[],'Headline':[],'Summary':[]}
-    for page in range(max_page):
-        url = f'https://www.barrons.com/search?id=%7B%22query%22%3A%7B%22not%22%3A%5B%7B%22terms%22%3A%7B%22key%22%3A%22SectionType%22%2C%22value%22%3A%5B%22NewsPlus%22%5D%7D%7D%5D%2C%22and%22%3A%5B%7B%22terms%22%3A%7B%22key%22%3A%22languageCode%22%2C%22value%22%3A%5B%22en%22%2C%22en-us%22%5D%7D%7D%2C%7B%22date%22%3A%7B%22key%22%3A%22liveDate%22%2C%22value%22%3A%222023-08-10T19%3A59%3A59-04%3A00%22%2C%22operand%22%3A%22LessEquals%22%7D%7D%2C%7B%22date%22%3A%7B%22key%22%3A%22liveDate%22%2C%22value%22%3A%222022-08-10T00%3A00%3A00%2B00%3A00%22%2C%22operand%22%3A%22GreaterEquals%22%7D%7D%2C%7B%22terms%22%3A%7B%22key%22%3A%22Product%22%2C%22value%22%3A%5B%22Barrons.com%22%2C%22Barrons.com%20Automated%20Market%20Wraps%22%2C%22Barrons%20Blogs%22%2C%22Barrons%20Advisor%20Credits%20Video%22%2C%22Barrons%20Broadband%20Video%22%2C%22Barrons%20Summit%20Video%22%2C%22Barrons%20Video%20Live%20Q%26A%22%2C%22Barrons.com%20Webstory%22%2C%22Barrons%20Live%20Coverage%22%5D%7D%7D%5D%2C%22or%22%3A%5B%7B%22query_string%22%3A%7B%22value%22%3A%22apple%22%2C%22default_or_operator%22%3Atrue%2C%22parameters%22%3A%5B%7B%22property%22%3A%22headline%22%2C%22boost%22%3A3%7D%2C%7B%22property%22%3A%22keywords%22%2C%22boost%22%3A4%7D%2C%7B%22property%22%3A%22byline%22%2C%22boost%22%3A3%7D%2C%7B%22property%22%3A%22body%22%2C%22boost%22%3A4%7D%2C%7B%22property%22%3A%22section_name%22%2C%22boost%22%3A5%7D%5D%7D%7D%2C%7B%22full_text%22%3A%7B%22value%22%3A%22{company}%22%2C%22match_phrase%22%3Atrue%2C%22parameters%22%3A%5B%7B%22property%22%3A%22headline%22%2C%22boost%22%3A3%7D%2C%7B%22property%22%3A%22body%22%2C%22boost%22%3A4%7D%5D%7D%7D%5D%7D%2C%22sort%22%3A%5B%7B%22key%22%3A%22relevance%22%2C%22order%22%3A%22desc%22%7D%5D%2C%22count%22%3A20%7D%2Fpage%3D{page}&type=allesseh_search_full_v2'
+    current_date = start_date
+    counter = 0
+    page = 0
+    #terminate_and_run_proton(r"C:\Program Files\Proton\VPN\v3.1.0\ProtonVPN.exe",terminate=False)
+    #terminate_and_run_proton(r"D:\Program Files (x86)\Proton Technologies\ProtonVPN\ProtonVPN.exe",terminate=False)
+
+    while current_date<=end_date:
+        current_year,current_month,current_day = IntervalDate(current_date,time_interval).get_current_date()
+        next_year,next_month,next_day = IntervalDate(current_date,time_interval).get_next_date()
+        current_date_str = datetime.strftime(current_date,'%Y-%m-%d')
+        next_date_str = datetime.strftime(current_date+timedelta(days=time_interval),'%Y-%m-%d')
+
+        url = f"https://www.barrons.com/search?id=%7B%22query%22%3A%7B%22not%22%3A%5B%7B%22terms%22%3A%7B%22key%22%3A%22SectionType%22%2C%22value%22%3A%5B%22NewsPlus%22%5D%7D%7D%5D%2C%22and%22%3A%5B%7B%22terms%22%3A%7B%22key%22%3A%22languageCode%22%2C%22value%22%3A%5B%22en%22%2C%22en-us%22%5D%7D%7D%2C%7B%22date%22%3A%7B%22key%22%3A%22liveDate%22%2C%22value%22%3A%22{next_date_str}T18%3A59%3A59-05%3A00%22%2C%22operand%22%3A%22LessEquals%22%7D%7D%2C%7B%22date%22%3A%7B%22key%22%3A%22liveDate%22%2C%22value%22%3A%22{current_date_str}T00%3A00%3A00%2B00%3A00%22%2C%22operand%22%3A%22GreaterEquals%22%7D%7D%2C%7B%22terms%22%3A%7B%22key%22%3A%22Product%22%2C%22value%22%3A%5B%22Barrons.com%22%2C%22Barrons.com%20Automated%20Market%20Wraps%22%2C%22Barrons%20Blogs%22%2C%22Barrons%20Advisor%20Credits%20Video%22%2C%22Barrons%20Broadband%20Video%22%2C%22Barrons%20Summit%20Video%22%2C%22Barrons%20Video%20Live%20Q%26A%22%2C%22Barrons.com%20Webstory%22%2C%22Barrons%20Live%20Coverage%22%5D%7D%7D%5D%2C%22or%22%3A%5B%7B%22query_string%22%3A%7B%22value%22%3A%22{company}%22%2C%22default_or_operator%22%3Atrue%2C%22parameters%22%3A%5B%7B%22property%22%3A%22headline%22%2C%22boost%22%3A3%7D%2C%7B%22property%22%3A%22keywords%22%2C%22boost%22%3A4%7D%2C%7B%22property%22%3A%22byline%22%2C%22boost%22%3A3%7D%2C%7B%22property%22%3A%22body%22%2C%22boost%22%3A4%7D%2C%7B%22property%22%3A%22section_name%22%2C%22boost%22%3A5%7D%5D%7D%7D%2C%7B%22full_text%22%3A%7B%22value%22%3A%22{company}%22%2C%22match_phrase%22%3Atrue%2C%22parameters%22%3A%5B%7B%22property%22%3A%22headline%22%2C%22boost%22%3A3%7D%2C%7B%22property%22%3A%22body%22%2C%22boost%22%3A4%7D%5D%7D%7D%5D%7D%2C%22sort%22%3A%5B%7B%22key%22%3A%22relevance%22%2C%22order%22%3A%22desc%22%7D%5D%2C%22count%22%3A20%7D%2Fpage%3D{page}&type=allesseh_search_full_v2"
 
         payload = {}
         headers = {
-        'sec-ch-ua': '"Not/A)Brand";v="99", "Google Chrome";v="115", "Chromium";v="115"',
-        'tracestate': '1022681@nr=0-1-1684273-1385912469-255f303fef1948f1----1691666216001',
-        'traceparent': '00-6964ae46184ea5919bfb3c1175932e00-255f303fef1948f1-01',
+        'authority': 'www.barrons.com',
+        'accept': '*/*',
+        'accept-language': 'en-US,en;q=0.9',
+        #'cookie': 'wsjregion=na%2Cus; ab_uuid=57746ccb-f0e2-4456-acf3-5bf962e1ecd9; usr_bkt=1p6sdUNJWD; _pcid=%7B%22browserId%22%3A%22ll52818318ms5m7h%22%7D; cX_P=ll52818318ms5m7h; _pctx=%7Bu%7DN4IgrgzgpgThIC4B2YA2qA05owMoBcBDfSREQpAeyRCwgEt8oBJAEzIE4AmHgZi4CsvAIwB2DqIAMADkHTRAkAF8gA; _pubcid=a9c66174-d226-4d66-96b3-b1de5cdb1c63; cX_G=cx%3Aaay94xhyxbv11gicm2zvcbs06%3A118c0xph4rjn9; ccpaUUID=c2d2144e-67e6-4ffb-a000-5fce7bc58548; _rdt_uuid=1691665942919.a6e1c4be-6736-4b59-bb15-f8bde9c1518d; _fbp=fb.1.1691665943068.1240242682; _cls_v=451db5d3-3a0a-4094-b5a0-40ddf833857a; _ncg_domain_id_=0ec0072f-4db3-49d7-ba37-b2560556712d.1.1691665942904.1754737942904; _ncg_g_id_=4d40a8c1-d098-4817-9b73-adeb1ac41c21.3.1691665459.1754737942904; _lr_env_src_ats=false; _dj_sp_id=efedd005-ecfa-4efd-b74f-0f17486efade; permutive-id=6c6c2bca-c05c-4138-88d6-6e1f360c4fc5; optimizelyEndUserId=oeu1691666193209r0.5358536663461277; dnsDisplayed=false; signedLspa=false; _ncg_id_=0ec0072f-4db3-49d7-ba37-b2560556712d; _parsely_visitor={%22id%22:%22pid=5e443952-8844-4822-9928-a578fd3058a9%22%2C%22session_count%22:2%2C%22last_session_ts%22:1691670954771}; consentUUID=d76965c7-8539-4c00-acd4-269856889512_22; AMCV_CB68E4BA55144CAA0A4C98A5%40AdobeOrg=1585540135%7CMCIDTS%7C19580%7CMCMID%7C07811295556865454993086478630926961519%7CMCAAMLH-1692279689%7C9%7CMCAAMB-1692279689%7CRKhpRz8krg2tLO6pguXWp5olkAcUniQYPHaMWWgdJ3xzPWQmdj0y%7CMCOPTOUT-1691682089s%7CNONE%7CMCAID%7CNONE%7CvVersion%7C4.4.0; _gcl_au=1.1.499596267.1691674896; utag_main=v_id:0189df25c56a0089c6625ae32bf80506f001806700aee^$_n:3^$_s:0^$_t:1691677961776^$vapi_domain:barrons.com^$_revpage:BOL_ResearchTools_Barrons%20Search%3Bexp-1691679761781^$ses_id:1691674889255%3Bexp-session^$_n:7%3Bexp-session; _ncg_sp_id.e48a=0ec0072f-4db3-49d7-ba37-b2560556712d.1691665943.13.1691676162.1691676157.b8146b02-6caf-4b7c-92a7-83893fcf9f42; cto_bundle=pCG-n19EQURaY0RhRXRScURXR3N2QmQ3V1lvNHNEcmU2RlNtR3c1WDVmQjBsVWJHWm5ENnhvY0g2dU9GNlUxeHd0b2QwWWFlR2t1RzBxbiUyQmllaGFndDJ1RVJRcnljZDNvMXJ4NzgzbGV5amsyVXdWVkFkcUhsTnl2OEFuRGRJOHp5NEJXODNpWiUyQkFXUUNGcFFWZ0tCMWJhWnh3JTNEJTNE; __gads=ID=c0815736f6fedddf:T=1691665942:RT=1691676182:S=ALNI_MboodYppO-KeovmgXjnvWNX5fiBHw; __gpi=UID=000009b291b15d47:T=1691665942:RT=1691676182:S=ALNI_MaJtq0rnOlFeh7f7piV5qu5GnNPAA; DJSESSION=country%3Dus%7C%7Ccontinent%3Dna%7C%7Cregion%3Dca%7C%7Ccity%3Dlosangeles%7C%7Clatitude%3D33.9733%7C%7Clongitude%3D-118.2487%7C%7Ctimezone%3Dpst%7C%7Czip%3D90001-90068%2B90070-90084%2B90086-90089%2B90091%2B90093-90096%2B90099%2B90189; gdprApplies=false; ccpaApplies=true; vcdpaApplies=false; regulationApplies=gdpr%3Afalse%2Ccpra%3Atrue%2Cvcdpa%3Afalse; usr_prof_v2=eyJwIjp7InBzIjowLjA1NzUxLCJxIjowLjU2fSwiaWMiOjR9; _lr_geo_location_state=CA; _lr_geo_location=US; _pbjs_userid_consent_data=6683316680106290; _sp_su=false',
+        'newrelic': 'eyJ2IjpbMCwxXSwiZCI6eyJ0eSI6IkJyb3dzZXIiLCJhYyI6IjE2ODQyNzMiLCJhcCI6IjEzODU5MTI0NzkiLCJpZCI6IjkxMWIwZmMzMzkyZjc1MmEiLCJ0ciI6IjI5N2U4ZTcwOTg4YzE4ZDgxNmRiMTkyYTk4ZDI1MDAwIiwidGkiOjE2OTM5NTkyNDQ1NjcsInRrIjoiMTAyMjY4MSJ9fQ==',
+        'referer': f'https://www.barrons.com/search?query={company}&quotequery={company}&isToggleOn=true&operator=OR&sort=relevance&duration=2d&startDate={current_year}%2F{current_month}%2F{current_day}&endDate={next_year}%2F{next_month}%2F{next_day}&source=barrons%2Cbarronsblog%2Cbarronsvideos%2Cbarronswebstory%2Cbarronslivecoverage',
+        'sec-ch-ua': '"Chromium";v="116", "Not)A;Brand";v="24", "Google Chrome";v="116"',
         'sec-ch-ua-mobile': '?0',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-        'newrelic': 'eyJ2IjpbMCwxXSwiZCI6eyJ0eSI6IkJyb3dzZXIiLCJhYyI6IjE2ODQyNzMiLCJhcCI6IjEzODU5MTI0NjkiLCJpZCI6IjI1NWYzMDNmZWYxOTQ4ZjEiLCJ0ciI6IjY5NjRhZTQ2MTg0ZWE1OTE5YmZiM2MxMTc1OTMyZTAwIiwidGkiOjE2OTE2NjYyMTYwMDEsInRrIjoiMTAyMjY4MSJ9fQ==',
-        'Referer': f'https://www.barrons.com/search?mod=DNH_S&query={company}&page={page+1}',
-        'sec-ch-ua-platform': '"Windows"'
+        'sec-ch-ua-platform': '"Windows"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+        'traceparent': '00-297e8e70988c18d816db192a98d25000-911b0fc3392f752a-01',
+        'tracestate': '1022681^@nr=0-1-1684273-1385912479-911b0fc3392f752a----1693959244567',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36'
         }
         try:
             response = requests.request("GET", url, headers=headers, data=payload)
             data = response.json()
         except:
-            input("Change IP address and press enter to continue: ")
-            response = requests.request("GET", url, headers=headers, data=payload)
-            data = response.json()
+            terminate_and_run_proton(r"C:\Program Files\Proton\VPN\v3.1.0\ProtonVPN.exe")
+            continue        
+        
         ids = [item["id"] for item in data["collection"]]
+
         for id in ids:
             #print(id)
             if id.startswith("lc"):
@@ -557,28 +583,26 @@ def get_barrons_data(company,max_page:int=60,file_method='w'):
             'authority': 'www.barrons.com',
             'accept': '*/*',
             'accept-language': 'en-US,en;q=0.9',
-            'cookie': 'wsjregion=na%2Cus; gdprApplies=false; ccpaApplies=true; ab_uuid=57746ccb-f0e2-4456-acf3-5bf962e1ecd9; usr_bkt=1p6sdUNJWD; _pcid=%7B%22browserId%22%3A%22ll52818318ms5m7h%22%7D; cX_P=ll52818318ms5m7h; _pctx=%7Bu%7DN4IgrgzgpgThIC4B2YA2qA05owMoBcBDfSREQpAeyRCwgEt8oBJAEzIE4AmHgZi4CsvAIwB2DqIAMADkHTRAkAF8gA; _lr_geo_location_state=CA; _lr_geo_location=US; _pbjs_userid_consent_data=6683316680106290; _pubcid=a9c66174-d226-4d66-96b3-b1de5cdb1c63; cX_G=cx%3Aaay94xhyxbv11gicm2zvcbs06%3A118c0xph4rjn9; ccpaUUID=c2d2144e-67e6-4ffb-a000-5fce7bc58548; AMCVS_CB68E4BA55144CAA0A4C98A5%40AdobeOrg=1; AMCV_CB68E4BA55144CAA0A4C98A5%40AdobeOrg=1585540135%7CMCIDTS%7C19580%7CMCMID%7C07811295556865454993086478630926961519%7CMCAAMLH-1692270742%7C9%7CMCAAMB-1692270742%7CRKhpRz8krg2tLO6pguXWp5olkAcUniQYPHaMWWgdJ3xzPWQmdj0y%7CMCOPTOUT-1691673142s%7CNONE%7CMCAID%7CNONE%7CvVersion%7C4.4.0; s_cc=true; _rdt_uuid=1691665942919.a6e1c4be-6736-4b59-bb15-f8bde9c1518d; _fbp=fb.1.1691665943068.1240242682; _cls_v=451db5d3-3a0a-4094-b5a0-40ddf833857a; _cls_s=f3b88220-d350-41e8-b5b9-c6a0cfbb0d99:0; _ncg_domain_id_=0ec0072f-4db3-49d7-ba37-b2560556712d.1.1691665942904.1754737942904; _parsely_session={%22sid%22:1%2C%22surl%22:%22https://www.barrons.com/%22%2C%22sref%22:%22https://www.google.com/%22%2C%22sts%22:1691665943811%2C%22slts%22:0}; _parsely_visitor={%22id%22:%22pid=5e443952-8844-4822-9928-a578fd3058a9%22%2C%22session_count%22:1%2C%22last_session_ts%22:1691665943811}; _ncg_g_id_=4d40a8c1-d098-4817-9b73-adeb1ac41c21.3.1691665459.1754737942904; __gads=ID=c0815736f6fedddf:T=1691665942:RT=1691665942:S=ALNI_MboodYppO-KeovmgXjnvWNX5fiBHw; __gpi=UID=000009b291b15d47:T=1691665942:RT=1691665942:S=ALNI_MaJtq0rnOlFeh7f7piV5qu5GnNPAA; _lr_retry_request=true; _lr_env_src_ats=false; _dj_sp_id=efedd005-ecfa-4efd-b74f-0f17486efade; s_sq=djglobal%3D%2526c.%2526a.%2526activitymap.%2526page%253DBOL_Home_US%252520Home%252520Page%252520Weekday%2526link%253DSearch%252520News%252520%252526%252520Quotes%2526region%253Droot%2526pageIDType%253D1%2526.activitymap%2526.a%2526.c; usr_prof_v2=eyJpYyI6NH0%3D; permutive-id=6c6c2bca-c05c-4138-88d6-6e1f360c4fc5; DJSESSION=country%3Dus%7C%7Ccontinent%3Dna%7C%7Cregion%3Dca; vcdpaApplies=false; regulationApplies=gdpr%3Afalse%2Ccpra%3Atrue%2Cvcdpa%3Afalse; optimizelyEndUserId=oeu1691666193209r0.5358536663461277; ResponsiveConditional_initialBreakpoint=lg; dnsDisplayed=false; signedLspa=false; spotim_visitId={%22visitId%22:%221904069a-ba0a-4552-b5b5-066e23e5e608%22%2C%22creationDate%22:%22Thu%20Aug%2010%202023%2007:16:36%20GMT-0400%20(Eastern%20Daylight%20Time)%22%2C%22duration%22:1}; cto_bundle=MQjLXl9EQURaY0RhRXRScURXR3N2QmQ3V1ltJTJGZzMlMkJrajcyajNPT2Fnak5uZVdXUUJDbFdTMDVCTVJDWW9DaHl4d2ZibjBZVmpJeHlIdW1tMUQ3U3FaekVIQUFPM0c0SFhsZHRPSjZLZ1ZVS0lmYWgwTTZvSSUyRlFVTDJTV1BCVWFaSTNTR0xkb0VhdTZvU0RhalBnJTJCWjBRM3FFQSUzRCUzRA; utag_main=v_id:0189df25c56a0089c6625ae32bf80506f001806700aee$_sn:1$_ss:0$_st:1691669030668$ses_id:1691665941867%3Bexp-session$_pn:10%3Bexp-session$_prevpage:BOL_ResearchTools_Barrons%20Search%3Bexp-1691670830674$vapi_domain:barrons.com; _dj_id.c19f=.1691665943.4.1691667231.1691666841.e009148b-6626-46e1-aca9-a0100440bd68..7d3f95ce-0d69-435d-ac55-ae276a1f1587.1691667231115.1; _ncg_sp_id.e48a=0ec0072f-4db3-49d7-ba37-b2560556712d.1691665943.4.1691667231.1691666841.d4208a56-bd96-43c4-a763-735896527758; _ncg_id_=0ec0072f-4db3-49d7-ba37-b2560556712d; _gcl_au=1.1.690478435.1691667231; s_tp=4377; s_ppv=BOL_ResearchTools_Barrons%2520Search%2C93%2C22%2C4081; sso_fired_at=1691667268066',
-            'if-none-match': 'W/"3b20-ajufIk8tn/Y9ejFdBGj9pEolf9I"',
-            'newrelic': 'eyJ2IjpbMCwxXSwiZCI6eyJ0eSI6IkJyb3dzZXIiLCJhYyI6IjE2ODQyNzMiLCJhcCI6IjEzODU5MTI0NjkiLCJpZCI6ImEyODQ0ZTlhNjMxNGEzMGUiLCJ0ciI6IjI4YWJlNjg4OGZkYjg1YmRiMzczMDE2NTU4Nzc4ZTAwIiwidGkiOjE2OTE2NjcyNjg0NTUsInRrIjoiMTAyMjY4MSJ9fQ==',
-            'referer': f'https://www.barrons.com/search?mod=DNH_S&query={company}&page={page+1}',
-            'sec-ch-ua': '"Not/A)Brand";v="99", "Google Chrome";v="115", "Chromium";v="115"',
+            #'cookie': 'wsjregion=na%2Cus; ab_uuid=57746ccb-f0e2-4456-acf3-5bf962e1ecd9; usr_bkt=1p6sdUNJWD; _pcid=%7B%22browserId%22%3A%22ll52818318ms5m7h%22%7D; cX_P=ll52818318ms5m7h; _pctx=%7Bu%7DN4IgrgzgpgThIC4B2YA2qA05owMoBcBDfSREQpAeyRCwgEt8oBJAEzIE4AmHgZi4CsvAIwB2DqIAMADkHTRAkAF8gA; _pubcid=a9c66174-d226-4d66-96b3-b1de5cdb1c63; cX_G=cx%3Aaay94xhyxbv11gicm2zvcbs06%3A118c0xph4rjn9; ccpaUUID=c2d2144e-67e6-4ffb-a000-5fce7bc58548; _rdt_uuid=1691665942919.a6e1c4be-6736-4b59-bb15-f8bde9c1518d; _fbp=fb.1.1691665943068.1240242682; _cls_v=451db5d3-3a0a-4094-b5a0-40ddf833857a; _ncg_domain_id_=0ec0072f-4db3-49d7-ba37-b2560556712d.1.1691665942904.1754737942904; _ncg_g_id_=4d40a8c1-d098-4817-9b73-adeb1ac41c21.3.1691665459.1754737942904; _lr_env_src_ats=false; _dj_sp_id=efedd005-ecfa-4efd-b74f-0f17486efade; permutive-id=6c6c2bca-c05c-4138-88d6-6e1f360c4fc5; optimizelyEndUserId=oeu1691666193209r0.5358536663461277; dnsDisplayed=false; signedLspa=false; _ncg_id_=0ec0072f-4db3-49d7-ba37-b2560556712d; _parsely_visitor={%22id%22:%22pid=5e443952-8844-4822-9928-a578fd3058a9%22%2C%22session_count%22:2%2C%22last_session_ts%22:1691670954771}; consentUUID=d76965c7-8539-4c00-acd4-269856889512_22; AMCV_CB68E4BA55144CAA0A4C98A5%40AdobeOrg=1585540135%7CMCIDTS%7C19580%7CMCMID%7C07811295556865454993086478630926961519%7CMCAAMLH-1692279689%7C9%7CMCAAMB-1692279689%7CRKhpRz8krg2tLO6pguXWp5olkAcUniQYPHaMWWgdJ3xzPWQmdj0y%7CMCOPTOUT-1691682089s%7CNONE%7CMCAID%7CNONE%7CvVersion%7C4.4.0; _gcl_au=1.1.499596267.1691674896; utag_main=v_id:0189df25c56a0089c6625ae32bf80506f001806700aee$_sn:3$_ss:0$_st:1691677961776$vapi_domain:barrons.com$_prevpage:BOL_ResearchTools_Barrons%20Search%3Bexp-1691679761781$ses_id:1691674889255%3Bexp-session$_pn:7%3Bexp-session; _ncg_sp_id.e48a=0ec0072f-4db3-49d7-ba37-b2560556712d.1691665943.13.1691676162.1691676157.b8146b02-6caf-4b7c-92a7-83893fcf9f42; cto_bundle=pCG-n19EQURaY0RhRXRScURXR3N2QmQ3V1lvNHNEcmU2RlNtR3c1WDVmQjBsVWJHWm5ENnhvY0g2dU9GNlUxeHd0b2QwWWFlR2t1RzBxbiUyQmllaGFndDJ1RVJRcnljZDNvMXJ4NzgzbGV5amsyVXdWVkFkcUhsTnl2OEFuRGRJOHp5NEJXODNpWiUyQkFXUUNGcFFWZ0tCMWJhWnh3JTNEJTNE; __gads=ID=c0815736f6fedddf:T=1691665942:RT=1691676182:S=ALNI_MboodYppO-KeovmgXjnvWNX5fiBHw; __gpi=UID=000009b291b15d47:T=1691665942:RT=1691676182:S=ALNI_MaJtq0rnOlFeh7f7piV5qu5GnNPAA; DJSESSION=country%3Dus%7C%7Ccontinent%3Dna%7C%7Cregion%3Dca%7C%7Ccity%3Dlosangeles%7C%7Clatitude%3D33.9733%7C%7Clongitude%3D-118.2487%7C%7Ctimezone%3Dpst%7C%7Czip%3D90001-90068%2B90070-90084%2B90086-90089%2B90091%2B90093-90096%2B90099%2B90189; gdprApplies=false; ccpaApplies=true; vcdpaApplies=false; regulationApplies=gdpr%3Afalse%2Ccpra%3Atrue%2Cvcdpa%3Afalse; usr_prof_v2=eyJwIjp7InBzIjowLjA1NzUxLCJxIjowLjU2fSwiaWMiOjR9; _lr_geo_location_state=CA; _lr_geo_location=US; _pbjs_userid_consent_data=6683316680106290; _sp_su=false',
+            'newrelic': 'eyJ2IjpbMCwxXSwiZCI6eyJ0eSI6IkJyb3dzZXIiLCJhYyI6IjE2ODQyNzMiLCJhcCI6IjEzODU5MTI0NzkiLCJpZCI6IjFiYTgxODViOTY2MzI2MjIiLCJ0ciI6ImM3M2FlZjI1NjY1MTkwZGE5MGQ3OGM1ZmEzNDE3OTAwIiwidGkiOjE2OTM5NTkyNDUxMjUsInRrIjoiMTAyMjY4MSJ9fQ==',
+            'referer': f'https://www.barrons.com/search?query={company}&quotequery={company}&isToggleOn=true&operator=OR&sort=relevance&duration=2d&startDate={current_year}%2F{current_month}%2F{current_day}&endDate={next_year}%2F{next_month}%2F{next_day}&source=barrons%2Cbarronsblog%2Cbarronsvideos%2Cbarronswebstory%2Cbarronslivecoverage',
+            'sec-ch-ua': '"Chromium";v="116", "Not)A;Brand";v="24", "Google Chrome";v="116"',
             'sec-ch-ua-mobile': '?0',
             'sec-ch-ua-platform': '"Windows"',
             'sec-fetch-dest': 'empty',
             'sec-fetch-mode': 'cors',
             'sec-fetch-site': 'same-origin',
-            'traceparent': '00-28abe6888fdb85bdb373016558778e00-a2844e9a6314a30e-01',
-            'tracestate': '1022681@nr=0-1-1684273-1385912469-a2844e9a6314a30e----1691667268455',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+            'traceparent': '00-c73aef25665190da90d78c5fa3417900-1ba8185b96632622-01',
+            'tracestate': '1022681@nr=0-1-1684273-1385912479-1ba8185b96632622----1693959245125',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36'
             }
 
             try:
                 id_response = requests.request("GET", url, headers=id_headers, data=id_payload)
                 id_data = id_response.json()
             except:
-                input("Change IP address and press enter to continue: ")
-                id_response = requests.request("GET", url, headers=id_headers, data=id_payload)
-                id_data = id_response.json()
+                print('An id_response error occurred')
+                continue
 
             time_stamp = id_data["data"]["timestamp"]
             headline = id_data["data"]["headline"]
@@ -592,10 +616,13 @@ def get_barrons_data(company,max_page:int=60,file_method='w'):
 
             # Convert timestamp to datetime object
             timestamp_date = datetime.fromtimestamp(timestamp_seconds)
-            print(timestamp_date)
-            df['Date'].append(timestamp_date)
+            timestamp_str = datetime.strftime(timestamp_date,'%Y-%m-%d')
+            print(timestamp_str)
+            df['Date'].append(timestamp_str)
             df['Headline'].append(headline)
             df['Summary'].append(summary)
+        
+        current_date = current_date + timedelta(days=time_interval+1)
 
     df = pd.DataFrame(df)
     j = df.to_json(orient='records',date_format='iso')
@@ -766,7 +793,6 @@ def news_roberta(company,outlet,start_date,end_date): #pretty much the same as b
     with open(f'web_scraping/{company}_{outlet}.dat','r') as file:
         r = file.read()
     data = pd.read_json(r)
-
     if outlet == 'seekingalpha':
         data['Date'] = data['Date'].apply(lambda x: x[:10])
     
@@ -776,12 +802,12 @@ def news_roberta(company,outlet,start_date,end_date): #pretty much the same as b
     #might need some conditionals in here to make sure start_date>min_date and likewise end_date<max_date
     if start_date is not None:
         date = fn.find_closest_date(data,start_date,direction='left')
+        #print(f'closest date: {date}')
         data = data.loc[data['Date']>=date]
     if end_date is not None:
         date = fn.find_closest_date(data,end_date,direction='right')
-        data = data.loc[data['Date']<=end_date]
+        data = data.loc[data['Date']<=date]
     data.reset_index(inplace=True,drop=True)
-
     sentiment_df = {'Headline_score':[]}
 
     for index in data.index:
@@ -789,6 +815,8 @@ def news_roberta(company,outlet,start_date,end_date): #pretty much the same as b
         #summary_score = roberta_sentiment(data['Summary'].iloc[index])
         sentiment_df['Headline_score'].append(headline_score)
         #sentiment_df['Summary_score'].append(summary_score)
+        if index%1000==0 and index>0:
+            print(index)
     sentiment_df = pd.DataFrame(sentiment_df)
     #print(sentiment_df)
     df = pd.concat([data,sentiment_df],axis=1)
@@ -833,7 +861,6 @@ def news_formatter(symbol,
     #print(average_series)
     # Convert the average Series back to a DataFrame
     #average_df = pd.concat([df.iloc[:,0],pd.DataFrame({'Headline': average_series})],axis=1)
-
     df = fn.data_fill(df,interpolate_columns='all',start_date=start_date,end_date=end_date)
     j = df.to_json(orient='records',date_format='iso')
     if file_method is not None:
@@ -1051,13 +1078,16 @@ def housing_eval_init(df,city,start_date):
 #SEC DATA
 #-----------------------------------------------------------------
 #IMPORTANT: the sec locates company urls by the "CIK" number, which is a unique identifier for each company. I'm going to have to include them in a dictionary.
+'''
 cik = {'AAL':6201,'AAPL':320193,'AMD':2488,
        'AMZN':1018724,'BAC':70858,'BANC':1169770,'BRK-B':1067983,'CGNX':851205,
        'CSCO':858877,'DELL':1571996,'DIS':1744489,'F':37996,'GE':40545,
        'GOOG':1652044,'INTC':50863,'MCD':63908,'META':1326801,'MLM':916076,'MSFT':789019,'NFLX':1065280,
        'NVDA':1045810,'QCOM':804328,'ROKU':1428439,'RUN':1469367,'SBUX':829224,'SHOP':1594805,
        'T':732717,'TGT':27419,'TSLA':1318605,'UPS':1090727,'WMT':104169}
-
+cik_df = pd.DataFrame(cik)
+'''
+cik = pd.read_csv('csv_data/SEC_CODES.csv')
 
 def get_insider_trading_data(symbol:str,max_page:int=6,start_date=datetime(2005,1,1),end_date=datetime(2023,6,1),file_method='w'):
     #I'm thinking about doing percentage of securities owned vs acquired or sold
@@ -1066,7 +1096,10 @@ def get_insider_trading_data(symbol:str,max_page:int=6,start_date=datetime(2005,
         pages.append(80*n) #the sec includes 80 rows of data per page
 
     df = {'Date':[],'InsiderFlow':[]} #change will be negative for a sell, positive for a purchase
-    locator = str(cik[symbol]).zfill(10)
+    cik_code = cik.loc[cik['ticker']==symbol]
+    cik_code = cik_code['cik'].iloc[-1]
+    locator = str(cik_code).zfill(10)
+    #print(locator)
 
     for num in pages:
         url = f'https://www.sec.gov/cgi-bin/own-disp?action=getissuer&CIK={locator}&type=&dateb=&owner=include&start={num}'
@@ -1075,7 +1108,7 @@ def get_insider_trading_data(symbol:str,max_page:int=6,start_date=datetime(2005,
 
         soup = BeautifulSoup(html_content, "html.parser")
         table = soup.find("table", {"id": "transaction-report"})
-
+        
         for row in table.select('tr:not(.header)'):
             data = row.find_all("td")
 
@@ -1102,6 +1135,8 @@ def get_insider_trading_data(symbol:str,max_page:int=6,start_date=datetime(2005,
                 change *= -1
             df['Date'].append(date)
             df['InsiderFlow'].append(change)
+
+
     
     df = pd.DataFrame(df)
     df.loc[:,'Date'] = pd.to_datetime(df['Date'])
@@ -1126,7 +1161,7 @@ def insider_init(symbol:str,start_date=None,end_date=None):
     data = pd.read_json(r,convert_axes=True)
     #replace all rows where insider_flow==1 to =0
     data['InsiderFlow'] = data['InsiderFlow'].replace(1,0)
-    df = fn.data_fill(data,start_date=start_date,end_date=end_date)
+    df = fn.data_fill(data,damping_columns=['InsiderFlow'],damping_constant=5.0,start_date=start_date,end_date=end_date)
     return df
 
 
@@ -1155,6 +1190,8 @@ def training_data_init(stocks_list,
                    insider_data=True,
                    start_date=None,
                    end_date=None,
+                   sequences=True,
+                   sequence_length=16,
                    file_name='TRAINING'):
     
     df_list = []
@@ -1206,10 +1243,14 @@ def training_data_init(stocks_list,
             df = fn.concatenate_data(data_list,start_date=start_date,end_date=end_date)
             df.to_csv(f'csv_tests/concatenate_{sym}.csv')
 
-        df['Close_Tmr'] = df['Close'].shift(-1)
-        df = df.drop(index=df.index[-1]) #drop the last row because the above shift method will result in NaN values
+
         df = df.fillna(0)
         df.set_index('Date',inplace=True)
+        if sequences:
+            df = fn.sequencizer(df,sequence_length)
+            
+        df['Close_Tmr'] = df['Close'].shift(-1)
+        df = df.drop(index=df.index[-1]) #drop the last row because the above shift method will result in NaN values
         print(f'Finished formatting {sym}')
         df.to_csv(f'csv_tests/formatted_{sym}.csv')
         df_list.append(df)
@@ -1233,8 +1274,11 @@ def eval_data_init(stock:str, #stock symbol
                    retail_sentiment=True,
                    google_trend=True,
                    insider_data=True,
-                   hist=256): #hist is the number of days of history you want to include in the evaluation tensor
+                   sequences = True,
+                   sequence_length = 16,
+                   ): #hist is the number of days of history you want to include in the evaluation tensor
     end_date = datetime.now()
+    hist = sequence_length*2
     start_date = end_date - timedelta(days=hist)
 
     df_list = []
@@ -1251,16 +1295,16 @@ def eval_data_init(stock:str, #stock symbol
         earnings_df = data_appender(earnings_pth,get_earnings,stock,start_date=start_date,end_date=end_date)
         earnings_df = earnings_init(stock,start_date=start_date,end_date=end_date)
         df_list.append(earnings_df)
-        print('earnings')
-        print(earnings_df)
+        #print('earnings')
+        #print(earnings_df)
     
     if google_trend:
         trend_pth = f'data_misc/trend_{stock}.dat'
         trend_df = data_appender(trend_pth,get_search_trend_data,stock,start_date=start_date,end_date=end_date)
         trend_df = trend_init(stock,start_date=start_date,end_date=end_date)
         df_list.append(trend_df)
-        print('trend')
-        print(trend_df)
+        #print('trend')
+        #print(trend_df)
 
     #news sentiment
     def news_pth(outlet):
@@ -1277,9 +1321,9 @@ def eval_data_init(stock:str, #stock symbol
             elif outlet == 'marketwatch':
                 data_appender(pth,get_marketwatch_data,stock,start_date=start_date,end_date=end_date)
 
-        news_sentiment_df = news_formatter(stock,start_date=start_date,end_date=end_date,file_method=None)
+        news_sentiment_df = news_formatter(stock,outlets=news_outlets,start_date=start_date,end_date=end_date,file_method=None)
         df_list.append(news_sentiment_df)
-        print(news_sentiment_df)
+        #print(news_sentiment_df)
 
         #alpha_df = news_formatter(stock,outlets=['seekingalpha'],start_date=start_date,end_date=end_date,file_method=None)
         #df_list.append(alpha_df)
@@ -1288,21 +1332,21 @@ def eval_data_init(stock:str, #stock symbol
     if rsi:
         stock_rsi = fn.calculate_rsi(stock,start_date=start_date,end_date=end_date)
         df_list.append(stock_rsi)
-        print(stock_rsi)
+        #print(stock_rsi)
 
     if insider_data:
         indsider_pth = f'data_misc/insider_{stock}.dat'
         insider_df = data_appender(indsider_pth,get_insider_trading_data,stock,start_date=start_date,end_date=end_date)
         insider_df = insider_init(stock,start_date=start_date,end_date=end_date)
         df_list.append(insider_df)
-        print(insider_df)
+        #print(insider_df)
     
     if retail_sentiment:
         retail_pth = f'data_equity/{stock}_retail_sentiment.dat'
         retail_df = data_appender(retail_pth,get_retail_sentiment,stock,start_date=start_date,end_date=end_date)
         retail_df = fn.retail_sentiment_formatter(stock,start_date=start_date,end_date=end_date)
         df_list.append(retail_df)
-        print(retail_df)
+        #print(retail_df)
     
     #federal reserve:
     def fed_pth(code):
@@ -1315,7 +1359,7 @@ def eval_data_init(stock:str, #stock symbol
             fed_df = data_appender(pth,get_fed_data,code,start_date=start_date,end_date=end_date)
             fed_df = fed_eval_init(fed_df,code)
             df_list.append(fed_df)
-            print(fed_df)
+            #print(fed_df)
         print('Initialized fed data')
 
     #housing:
@@ -1329,15 +1373,25 @@ def eval_data_init(stock:str, #stock symbol
             city_df = data_appender(pth,get_housing_data,city,start_date=start_date,end_date=end_date,overwrite=False)
             city_df = housing_formatter(city,start_date=start_date,end_date=end_date)
             df_list.append(city_df)
-            print(city_df)
+            #print(city_df)
         print('Initialized housing data')
 
     df_merged = df_list[0]
     for df in df_list[1:]:
         df_merged = pd.merge(df_merged,df,on='Date',how='outer')
 
+    #df_merged['Close_Tmr'] = df_merged['Close'].shift(-1)
+    if rsi:
+        df_merged['RSI'].fillna(inplace=True,method='ffill')
+    if retail_sentiment:
+        df_merged['sentiment'].fillna(0,inplace=True)
+
+    df_merged.set_index('Date',inplace=True)
+    if sequences:
+        df_merged = fn.sequencizer(df_merged,sequence_length)    
+
     date_str = datetime.strftime(end_date,'%Y-%m-%d')
-    df_merged.to_csv(f'csv_data/{stock}-{date_str}')
+    df_merged.to_csv(f'csv_data/{stock}-{date_str}.csv')
     print(df_merged)
     return df_merged
 
@@ -1352,28 +1406,74 @@ def eval_data_init(stock:str, #stock symbol
 #sentiment_init(retail_stocks,retail_companies)
 #equity_init(model_stocks,model_companies)
 #as of now, seekingalpha_F.dat ends in 2015, so I am leaving ford out of the list
+'''
 model_stocks = ['AAL','AAPL','AMD','AMZN','BAC','BANC','BRK-B','CGNX','UPS','DELL','DIS',
                 'INTC','GE','TGT','MCD','MSFT','NVDA','NFLX','QCOM','ROKU','RUN','SBUX','WMT','GOOG','CSCO']
 #sentiment_init(model_stocks)
 pth = f'data_equity/{model_stocks[0]}_retail_sentiment.dat'
 #data_appender(pth,get_retail_sentiment,model_stocks[0])
+sequence_length=10
 
-'''
-training_data_init(['AAL'],
-                   city_list=['NY'],
-                   fed_list=['DFF','UNRATE'],
+training_data_init(model_stocks,
                    end_date=datetime(2023,6,1),
                    retail_sentiment=False,
-                   file_name='AAL_TRAINING'
+                   file_name='TRAINING_NRS-9-2',
+                   sequence_length=sequence_length,
+                   news_prefixes=['news_sentiment']
                    )
+
+
 '''
+'''
+sequence_length=10
+#get_insider_trading_data('SHOP')
 
-eval_data_init(
-    'AAPL',
-    city_list=['NY'],
-    #fed_list=['DFF','UNRATE']
+sym_list = ['PARA', 'PINS', 'PTEN'
+]
 
-)
+for sym in sym_list:
+    eval_data_init(
+        sym,
+        sequence_length=sequence_length
+    )
+
+eval_data_init('ESRT',sequence_length=sequence_length,news_outlets=['bloomberg'])
 
 
 #get_bloomberg_data('AAPL',max_page=40)
+
+news_outlets = ['bloomberg','marketwatch']
+def news_pth(outlet):
+    pth = f'web_scraping/{stock}_{outlet}.dat'
+    return pth
+stock = 'AAL'
+end_date = datetime.now()
+start_date = end_date - timedelta(days=256)
+
+for outlet in news_outlets:
+    pth = news_pth(outlet)
+    if outlet == 'seekingalpha':
+        data_appender(pth,get_seekingalpha_analysis,stock,start_date=start_date,end_date=end_date)
+    elif outlet == 'bloomberg':
+        data_appender(pth,get_bloomberg_data,stock,start_date=start_date,end_date=end_date)
+    elif outlet == 'marketwatch':
+        data_appender(pth,get_marketwatch_data,stock,start_date=start_date,end_date=end_date)
+
+news_sentiment_df = news_formatter(stock,start_date=start_date,end_date=end_date,file_method=None)
+print(news_sentiment_df)
+'''
+
+barrons_stocks = ['AAPL','AMD','AMZN','BAC','BANC','BRK-B','UPS','DELL','DIS',
+                'INTC','GE','TGT','MCD','MSFT','NVDA','NFLX','QCOM','ROKU','RUN','SBUX','WMT','GOOG','CSCO','AXP','CAT','MMM','PG','WBA','V']
+for stock in barrons_stocks:
+    get_barrons_data(stock,time_interval=3)
+
+news_stocks = ['AXP','CAT','MMM','PG','WBA','V']
+for stock in news_stocks:
+    get_marketwatch_data(stock)
+    get_bloomberg_data(stock)
+    get_insider_trading_data(stock,max_page=50)
+    get_retail_sentiment(stock)
+    get_earnings(stock)
+    get_equity_data(stock)
+    get_search_trend_data(stock)

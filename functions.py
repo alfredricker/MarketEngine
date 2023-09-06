@@ -44,39 +44,31 @@ def get_json_date_extrema(file_path):
     return arr
 
 #--------------------------------------------------------------------------------------------------------
-'''
-def find_closest_date(df, target_date, direction='both'):
-    if 'Date' not in df.columns:
-        raise ValueError("DataFrame must have a 'Date' column.")
-    
-    target_date = pd.to_datetime(target_date)
-    
-    if direction == 'both':
-        closest_date = df['Date'].iloc[(df['Date'] - target_date).abs().idxmin()]
-    elif direction == 'left':
-        closest_date = df['Date'].iloc[(df['Date'] - target_date).apply(lambda x: x if x <= pd.Timedelta(0) else pd.NaT).idxmax()]
-    elif direction == 'right':
-        closest_date = df['Date'].iloc[(df['Date'] - target_date).apply(lambda x: x if x >= pd.Timedelta(0) else pd.NaT).idxmin()]
-    else:
-        raise ValueError("Invalid direction. Choose 'left', 'right', or 'both'.")
 
-    return closest_date
-'''
 def find_closest_date(df, target_date, direction='closest'):
     if direction not in ['left', 'right', 'closest']:
         raise ValueError("Invalid direction. Valid values are 'left', 'right', or 'closest'.")
 
     # Convert the 'target_date' to a datetime object
     target_date = pd.to_datetime(target_date)
-
+    #df = df.sort_values(by='Date')
     # Get the date column from the DataFrame
     date_column = 'Date'  # Assuming the date column is the first column
 
     # Find the index of the closest date
     if direction == 'left':
-        closest_idx = (df[date_column] <= target_date).idxmax()
+        if target_date<=df['Date'].iloc[0]:
+            return target_date
+        #closest_idx = (df[date_column] <= target_date).idxmax()
+        df_left = df.loc[df[date_column]<=target_date]
+        return df_left['Date'].iloc[-1]
     elif direction == 'right':
-        closest_idx = (df[date_column] >= target_date).idxmin()
+        #closest_idx = (df[date_column] >= target_date).idxmin()
+        if target_date>= df['Date'].iloc[-1]:
+            return target_date
+        df_right = df.loc[df[date_column]>=target_date]
+        df_right.reset_index(inplace=True,drop=True)
+        return df_right['Date'].iloc[0]
     else:  # direction == 'closest'
         closest_idx = (df[date_column] - target_date).abs().idxmin()
 
@@ -87,6 +79,64 @@ def find_closest_date(df, target_date, direction='closest'):
 def inverse_sqrt_damping(value:float,t:int,c:float): #c is damping constant, t is number of days since initial information
     y = value/np.sqrt(1+(t*t/(c*c)))
     return y
+
+
+def remove_non_trading_days(date_list):
+    trading_days = []
+    for date in date_list:
+        if date.dayofweek < 5:  # Check if it's a trading day (Monday to Friday)
+            trading_days.append(date)
+    return trading_days
+
+
+def remove_weekend_rows(df: pd.DataFrame, average: bool = True):
+    # Check if the DataFrame has a 'Date' column
+    if 'Date' != df.columns[0]:
+        print("Error: 'Date' column not found in the DataFrame.")
+        return None
+
+    index = 0
+    last_weekday_index = None  # Keep track of the most recent weekday row
+    size = df.shape[0]
+
+    while index < size:
+        current_weekday = df.loc[index,'Date'].dayofweek
+        if index==0:
+            print(current_weekday)
+
+        if last_weekday_index is None:
+            if current_weekday<5:
+                last_weekday_index = index
+
+            else:
+                for col in list(df.columns[1:]): #perform forward average of non-date columns
+                    val1 = float(df[col].iloc[index])
+                    try:
+                        val2 = float(df[col].iloc[index+1]) 
+                        avg = (val1+val2)/2
+                        df.loc[index+1,col] = avg
+                    except:
+                        print('remove_weekend_rows out of bounds block ran')
+
+                df.drop(index,axis=0,inplace=True)
+            index += 1
+            continue
+
+        if current_weekday < 5:  # Check if it's a weekday
+            last_weekday_index = index
+
+        else:  # It's a weekend row
+            for col in list(df.columns[1:]): #perform backward average
+                val1 = float(df.loc[index,col])
+                val2 = float(df.loc[last_weekday_index,col]) 
+                avg = (val1+val2)/2
+                df.loc[last_weekday_index,col] = avg
+
+            df.drop(index, axis=0, inplace=True)
+
+        index += 1
+    return df
+
 
 
 def ffill(df:pd.DataFrame,end_date:datetime=None,na=False,damping=False,damping_constant:float=0.0): #standard forward fill of the last value of the dataframe up to a specified date
@@ -113,16 +163,20 @@ def ffill(df:pd.DataFrame,end_date:datetime=None,na=False,damping=False,damping_
         if i < len(df)-1:
             next_row = df.iloc[i+1]
             date_range = pd.date_range(current_date,next_row['Date'],inclusive='left')
+            date_range = remove_non_trading_days(date_range)
+
         else:
             if end_date is None:
                 break
             date_range = pd.date_range(current_date,end_date,inclusive='both')
+            date_range = remove_non_trading_days(date_range)
         
         curr_values = [current_row[x] for x in df.columns[1:]]
         na_values = [pd.NA for x in df.columns[1:]]
+
         for date in date_range:
             if damping:
-                t = (date-current_date).days
+                t = (date-current_date).days #maybe change this because it will be extra damped after weekends
                 values = [inverse_sqrt_damping(float(current_row[x]),t,damping_constant) for x in df.columns[1:]]
             elif na and date>current_date:
                 values = na_values
@@ -157,15 +211,21 @@ def data_fill(df:pd.DataFrame,
 
     columns = list(df.columns)
     if percent_columns=='all':
-        percent_columns = df.columns[1:] #don't want to remove these columns from the list because we still need to fill in this data
+        percent_columns = list(df.columns[1:]) #don't want to remove these columns from the list because we still need to fill in this data
     elif damping_columns=='all':
-        damping_columns = df.columns[1:]
+        damping_columns = list(df.columns[1:])
+    
+    if interpolate_columns=='all':
+        interpolate_columns = list(df.columns[1:])
 
     #date initialization
-    df.loc[:,'Date'] = pd.to_datetime(df['Date'],errors='coerce')
+    #df.loc[:,'Date'] = pd.to_datetime(df['Date'],errors='coerce')
+    df.loc[:,'Date'] = df['Date'].dt.date
+    df.loc[:,'Date'] = pd.to_datetime(df['Date'])
     df = df.dropna(subset='Date')
     df_sorted = df.sort_values(by='Date')
     df_sorted = df_sorted.groupby('Date').mean().reset_index()
+    df_sorted = remove_weekend_rows(df_sorted)
 
     max_date = df_sorted['Date'].iloc[-1]
     min_date = df_sorted['Date'].iloc[0]
@@ -204,7 +264,7 @@ def data_fill(df:pd.DataFrame,
             columns.remove(col)
     
     df_list = []
-    if columns:
+    if len(columns)>1:
         df_std = df_sorted[columns]
         df_list.append(ffill(df_std,end_date=end_date))
 
@@ -287,10 +347,15 @@ def equity_formatter(symbol,nominal=False,api='yfinance',start_date=None,end_dat
 def retail_sentiment_formatter(symbol,start_date=None,end_date=None):
     with open(f'data_equity/{symbol}_retail_sentiment.dat','r') as file:
         j = file.read()
-    df = pd.read_json(j)
+    df = pd.read_json(j,convert_dates=True)
     #df = df.fillna(0)
     df.reset_index(inplace=True)
     df = df[['Date','sentiment']]
+
+    if start_date is not None:
+        df = df.loc[df['Date']>=start_date]
+    if end_date is not None:
+        df = df.loc[df['Date']<=end_date]
 
     #df = data_fill(df,damping_columns='all') #don't want to do forward fills
     return df
@@ -467,3 +532,13 @@ def append_formatter(data):
     data = str(data)
     output = data.replace('][',',')
     return output
+
+
+from copy import deepcopy as dc
+def sequencizer(df, n_steps):
+    df = dc(df)
+    for column in list(df.columns):
+        for i in range(1,n_steps+1):
+            df[f'{column}(t-{i})'] = df[column].shift(i)
+    df.dropna(inplace=True)
+    return df
