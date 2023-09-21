@@ -1,4 +1,4 @@
-#7-27-2023
+# 7-27-2023
 I think that first the program should train each ticker individually with a def train_ticker function rather than create a neural network that trains a large set of dependent variables (all of the tickers). This way I can more easily test each ticker with live data to create a "buy" or "sell" signal within the program.
 Perhaps eventually I will want to train all long-type equities together where the individual biases also depends on this training set. That would of course be some later stage inclusion.
 
@@ -6,24 +6,24 @@ I also wanted to make note that there should be a feature where you input into t
 
 With a combination of AlphaVantage and Nasdaq Data Link I can probably write a nice HFT deep learning algorithm. For now I'm just going to do daily frequency. With SerpAPI you could write a separate neural network that scrapes for news articles on a given a stock
 
-#7-28-23
+# 7-28-23
 Use postman for debugging and web scraping
 
-#8-1-23
+# 8-1-23
 api.explodingtopics.com looks like it will be a very useful api (if it turns out to be free and functional)
 
 I think that web scraping the popularity and sentiment of a given company at a given time should be the crux of the model
 
-#8-3-23
+# 8-3-23
 For EPS data, I am using alphavantage and am including a counter of the number of weeks since the release of the data (because this might be relevant to price hype and what not)
 
-#8-4-23
+# 8-4-23
 IMPORTANT: since I want to look at how the present day data effects the closing price of tomorrow, I have to copy the close column, and shift it down 1 position in a new row
 
-#8-5-23
+# 8-5-23
 Ok, I got a trial model working properly, which is great. It also fits the data nicely, however, I was unsuccessful with producing a win rate that is consistently higher than that of just holding the stock. I need to try various loss functions and model parameters until I get something decent.
 
-#8-6-23
+# 8-6-23
 Try adding a "fully connected layer" beyond the layers of the LSTM network to further process the data and make better predictions.
 Also, apply BCEntropy loss function such that if there is a probability greater than say 0.6 or 0.75 that the stock is class 1 (long), then the model signals a buy
 and if it is probability greater than 0.6 or 0.75 that the stock is in class 0 (short), then the model signals a sell.
@@ -31,8 +31,15 @@ You must transform the target data to binary [0,1]
 To address class imbalances make sure that the training data has an equal number of positive and negative days. This makes sure that the model won't simply find the 
 local minimum of guessing all positive days.
 
-#8-13-23
+# 8-13-23
 IMPORTANT: Add a CNN layer before the LSTM. This will allow for automated feature selection
+
+# 9-15-23
+Damp the earnings surprise column more intensely
+
+# 9-18-23
+Keep downloading barchart data and figure out how you're going to scrape the daily closing data.
+
 
 ##HOW TO CREATE THE MODEL
 Data Preprocessing: Clean and preprocess your data thoroughly. Handle missing values, scale the features appropriately, and consider normalization or standardization to make optimization easier for the neural network.

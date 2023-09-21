@@ -101,8 +101,8 @@ def remove_weekend_rows(df: pd.DataFrame, average: bool = True):
 
     while index < size:
         current_weekday = df.loc[index,'Date'].dayofweek
-        if index==0:
-            print(current_weekday)
+        #if index==0:
+            #print(current_weekday)
 
         if last_weekday_index is None:
             if current_weekday<5:
@@ -220,13 +220,13 @@ def data_fill(df:pd.DataFrame,
 
     #date initialization
     #df.loc[:,'Date'] = pd.to_datetime(df['Date'],errors='coerce')
-    df.loc[:,'Date'] = df['Date'].dt.date
+    #df.loc[:,'Date'] = df['Date'].dt.date
     df.loc[:,'Date'] = pd.to_datetime(df['Date'])
+    #df.loc[:,'Date'] = df['Date'].dt.date
     df = df.dropna(subset='Date')
     df_sorted = df.sort_values(by='Date')
     df_sorted = df_sorted.groupby('Date').mean().reset_index()
     df_sorted = remove_weekend_rows(df_sorted)
-
     max_date = df_sorted['Date'].iloc[-1]
     min_date = df_sorted['Date'].iloc[0]
 
@@ -289,6 +289,8 @@ def data_fill(df:pd.DataFrame,
         df_merged = df_merged.loc[df_merged['Date']>=start_date]
         df_merged.reset_index(inplace=True,drop=True)
 
+    df_merged = df_merged.groupby('Date').mean().reset_index()
+
     return df_merged    
 
 #---------------------------------------------------------------------------------------------------
@@ -313,12 +315,13 @@ def get_df_date_extrema(df_list):
 
 
 #properly reads and formats the pd dataframe, forward fills the data, and splits data into a [price,volume] data list
-def equity_formatter(symbol,nominal=False,api='yfinance',start_date=None,end_date=None):
-    with open(f'data_equity/{symbol}.dat','r') as file: #open the necessary equity file
-        d = file.read()
+def equity_formatter(symbol:str='none',df=None,nominal=False,api='yfinance',start_date=None,end_date=None):
+    if symbol!='none':
+        with open(f'data_equity/{symbol}.dat','r') as file: #open the necessary equity file
+            d = file.read()
+        df = pd.read_json(d)
 
     if api == 'yfinance':
-        df = pd.read_json(d)
         df = df[['Date','Adj Close','Volume']]
         df = df.rename(columns={'Adj Close':'Close'})
     elif api=='alphavantage':
@@ -535,10 +538,33 @@ def append_formatter(data):
 
 
 from copy import deepcopy as dc
-def sequencizer(df, n_steps):
+def sequencizer(df, n_steps,ignore_columns=[]):
     df = dc(df)
-    for column in list(df.columns):
+    col_list = list(df.columns)
+    
+    if ignore_columns:
+        for col in ignore_columns:
+            col_list.remove(col)
+    
+    for column in col_list:
         for i in range(1,n_steps+1):
             df[f'{column}(t-{i})'] = df[column].shift(i)
+            
+    df.dropna(inplace=True)
+    return df
+
+
+def sequencizer_with_rolling_mean(df, n_steps, ignore_columns=[]):
+    df = dc(df)
+    col_list = list(df.columns)
+
+    if ignore_columns:
+        for col in ignore_columns:
+            col_list.remove(col)
+
+    for column in col_list:
+        for i in range(1, n_steps + 1):
+            df[f'{column}_avg(t-{i})'] = df[column].rolling(window=5).mean().shift(i)
+
     df.dropna(inplace=True)
     return df

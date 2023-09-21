@@ -11,6 +11,7 @@ import yfinance as yf
 import quandl
 import time
 from selenium import webdriver
+import os
 import subprocess
 
 ndaq = pd.read_csv("csv_data/nasdaq_screener.csv")
@@ -18,64 +19,82 @@ ndaq = ndaq.sort_values(by='Volume',ascending=False)
 
 quandl.ApiConfig.api_key = 'h3gFTxuuELMsc6zXU7_J'
 
-def data_appender(pth:str,
-                  get_function:callable, #the function that fetches the data
-                  symbol:str, #the string passed to the get function
-                  start_date:datetime=None,
-                  end_date:datetime=datetime.now(),
-                  concat:bool=True, #concat will be false for alphavantage data (because start and end date do nothing within those functions)
-                  overwrite = True):  
-    try:
-        with open(pth,'r') as f:
-            r = f.read()
-    except: #if you are not appending, instead create a new file
-        start = start_date-timedelta(days=92)
-        df = get_function(symbol,start_date=start,end_date=end_date,file_method=None)
-        j = df.to_json(orient='records',date_format='iso')
-        with open(pth,'w') as f:
-            f.write(j)
-        return df
+alphavantage_key='O7TXW0XZOPYNKC5D'
+#alphavantage_key = '1C3O71BAB7HJXTWZ'
+#alphavantage_key = 'B71NVO0WITDQFLF4'
+benzinga_key = '4edd94fa08d140a78309628f689b7ada'
 
-    df = pd.read_json(r,convert_dates=True)
-    if "seekingalpha" in pth: #this is temporary because i didn't originally include this line in my seekingalpha function
-        df['Date'] = df['Date'].apply(lambda x: x[:10])
-        df.loc[:,'Date'] = pd.to_datetime(df['Date'])
-    
-    df.sort_values(by='Date',inplace=True)
-    
-    recent_date = df['Date'].iloc[-1]
-    #print(recent_date)
-    if recent_date+timedelta(days=1)>end_date:
-        print('No new data to append')
-        start_date = fn.find_closest_date(df,start_date,direction='left')
-        df = df.loc[df['Date']>=start_date]
-        return df
+proton_path = r"C:\Program Files\Proton\VPN\v3.1.0\ProtonVPN.exe"
+
+def change_alphavantage_key(key):
+    if key=='1C3O71BAB7HJXTWZ':
+        new_key = 'O7TXW0XZOPYNKC5D'
+    elif key=='B71NVO0WITDQFLF4':
+        new_key = '1C3O71BAB7HJXTWZ'
+    else:
+        print('error')
+    return new_key
+
+
+
+def data_appender(pth: str,
+                  get_function: callable,
+                  symbol: str,
+                  start_date: datetime = None,
+                  end_date: datetime = datetime.now(),
+                  concat: bool = True,
+                  sequence_length = 5,
+                  overwrite=True):
+    # Create the full file path by joining the cwd and the provided path
+    full_path = os.path.join(os.getcwd(), pth)
+
+    if overwrite==True and concat==False:
+        print('Caution: recommended setting is concat=True when overwrite=True')
 
     if start_date is None:
-        starting_date = recent_date#datetime.strptime(str(recent_date),'%Y-%m-%d')
-        starting_date = starting_date + timedelta(days=1)
-    elif start_date<recent_date:
-        starting_date = recent_date
-        starting_date = starting_date + timedelta(days=1)
-    else:
-        starting_date=start_date
-    
-    #print(starting_date,'\n',end_date)
-    data = get_function(symbol,start_date=starting_date,end_date=end_date,file_method=None)
-    #print(data)
+        start_date = end_date - timedelta(days=sequence_length*3)
 
-    if concat==True:
-        df = pd.concat([df,data],axis=0,ignore_index=True)
+    if os.path.isfile(full_path) and os.path.getsize(full_path) > 0:
+        with open(full_path, 'r') as f:
+            df = pd.read_json(f, convert_dates=True)
+
+        #df.loc[:,'Date'] = pd.to_datetime(df['Date'])
+
+        recent_date = df['Date'].iloc[-1]
+
+        if recent_date + timedelta(days=1) > end_date:
+            print('No new data to append')
+            start_date = fn.find_closest_date(df, start_date, direction='left')
+            df = df.loc[df['Date'] >= start_date]
+            return df
+        
     else:
+        recent_date = None
+        df = None
+
+    if recent_date is None:
+        starting_date = start_date
+    elif start_date < recent_date:
+        starting_date = recent_date + timedelta(days=1)
+    else:
+        starting_date = start_date
+
+    if get_function.__name__ == get_equity_data.__name__:
+        data = get_function(symbol, start_date=starting_date, end_date=end_date, file_method=None, data_method='history')
+    elif get_function.__name__ == get_bloomberg_data.__name__:
+        data = get_function(symbol, start_date=start_date,end_date=end_date,file_method=None,max_page=int(sequence_length/1.5))
+    else:
+        data = get_function(symbol, start_date=starting_date, end_date=end_date, file_method=None)
+
+    if not concat:
         df = data
-    
-    #print(df.to_string())
-    j = df.to_json(orient='records',date_format='iso')
-    if overwrite==True:
-        with open(pth,'w') as f:
-            f.write(j)
+    else:
+        df = pd.concat([df, data], axis=0, ignore_index=True)
 
-    #df = df.loc[df['Date']>=start_date]
+    j = df.to_json(orient='records', date_format='iso')
+    if overwrite:
+        with open(full_path, 'w') as f:
+            f.write(j)
 
     return df
 
@@ -88,14 +107,31 @@ def data_appender(pth:str,
 #EQUITY DATA
 #--------------------------------------------------------------
 #gets closing prices from yfinance
-def get_equity_data(symbol:str,start_date=datetime(2000,1,1),end_date=datetime(2023,6,1),api:str='yf',file_method='w'):
+def get_equity_data(symbol:str,start_date=datetime(2000,1,1),end_date=datetime(2023,6,1),api:str='yf',file_method='w',data_method='download'):
     start_date=datetime.strftime(start_date,'%Y-%m-%d')
     end_date=datetime.strftime(end_date,'%Y-%m-%d')
 
     if api == 'yf':
-        data = yf.download(symbol,start=start_date,end=end_date)
-        df = pd.DataFrame(data)
-        df.reset_index(inplace=True)
+        if data_method=='download':
+            data = yf.download(symbol,start=start_date,end=end_date)
+            df = pd.DataFrame(data)
+            df.reset_index(inplace=True)
+
+        elif data_method=='history':
+            ticker = yf.Ticker(symbol)
+            data = ticker.history(period='1mo')
+            df = pd.DataFrame(data)
+            df.insert(loc=4,column='Adj Close',value=df['Close'])
+            df.drop(columns=['Dividends', 'Stock Splits'],inplace=True)
+            df.reset_index(inplace=True)
+            df['Date'] = df['Date'].astype(str)
+            df['Date'] = df['Date'].apply(lambda x: x[:10])
+            df.loc[:,'Date'] = pd.to_datetime(df['Date'])
+
+        else:
+            print('Invalid data method')
+            return -1
+        
         j = df.to_json(orient='records',date_format='iso')
 
         if file_method is not None: 
@@ -132,11 +168,20 @@ def get_ticker_list(n:int=500,sort_by='Volume'):
 
 
 #using alpha vantage again
-def get_earnings(symbol:str,start_date=None,end_date=None,file_method='w'):
-    url = f'https://www.alphavantage.co/query?function=EARNINGS&symbol={symbol}&apikey=1C3O71BAB7HJXTWZ'
+def get_earnings(symbol:str,start_date=None,end_date=None,file_method='w',key='1C3O71BAB7HJXTWZ'):
+    url = f'https://www.alphavantage.co/query?function=EARNINGS&symbol={symbol}&apikey={key}'
     r = requests.get(url)
     j = r.json()
-    dat = j['quarterlyEarnings']
+
+    try:
+        dat = j['quarterlyEarnings']
+    except:
+        new_key = change_alphavantage_key(key)
+        url = f'https://www.alphavantage.co/query?function=EARNINGS&symbol={symbol}&apikey={new_key}'
+        r = requests.get(url)
+        j = r.json()
+        dat = j['quarterlyEarnings']
+    
     df = pd.DataFrame(dat)
 
     df = df[['reportedDate','reportedEPS','surprisePercentage']]
@@ -159,17 +204,8 @@ def get_earnings(symbol:str,start_date=None,end_date=None,file_method='w'):
 
 
 
-def earnings_init_old(symbol:str,start_date=None,end_date=None):
-    with open(f'data_equity/{symbol}_earnings.dat','r') as file:
-        r = file.read()
-    data = pd.read_json(r,convert_dates=True)
-    df = fn.data_fill(data,damping_columns=['surprise'],start_date=start_date,end_date=end_date)
-    return df
-
-
-
 def get_balance_sheet(symbol:str,start_date=None,end_date=None,file_method='w'):
-    url = f'https://www.alphavantage.co/query?function=BALANCE_SHEET&symbol={symbol}&output_size=max&apikey=1C3O71BAB7HJXTWZ'
+    url = f'https://www.alphavantage.co/query?function=BALANCE_SHEET&symbol={symbol}&output_size=max&apikey={alphavantage_key}'
     r = requests.get(url)
     data = r.json()
     df = pd.DataFrame(data)
@@ -181,7 +217,7 @@ def get_balance_sheet(symbol:str,start_date=None,end_date=None,file_method='w'):
 
 
 def get_cashflow(symbol:str,start_date=None,end_date=None,file_method='w'):
-    url = f'https://www.alphavantage.co/query?function=CASH_FLOW&symbol={symbol}&time_from=20050101T0000&apikey=1C3O71BAB7HJXTWZ'
+    url = f'https://www.alphavantage.co/query?function=CASH_FLOW&symbol={symbol}&time_from=20050101T0000&apikey={alphavantage_key}'
     r = requests.get(url)
     data = r.json()
     df = pd.DataFrame(data)
@@ -262,10 +298,13 @@ def balance_sheet_formatter(symbol:str):
     df.to_csv(f'csv_tests/{symbol}_balance_sheet.csv')
 
 
-def earnings_init(symbol:str,start_date=None,end_date=None):
-    with open(f'data_equity/{symbol}_earnings.dat','r') as file:
-        r = file.read()
-    data = pd.read_json(r,convert_axes=True)
+def earnings_init(symbol:str='none',df=None,start_date=None,end_date=None):
+    if symbol!='none':
+        with open(f'data_equity/{symbol}_earnings.dat','r') as file:
+            r = file.read()
+        data = pd.read_json(r,convert_axes=True)
+    else:
+        data = df
 
     for index in data.index:
         if data.iloc[index,1] == 'None':
@@ -273,8 +312,26 @@ def earnings_init(symbol:str,start_date=None,end_date=None):
         elif data.loc[index,'surprise']=='None':
             data.loc[index,'surprise'] = 0
 
-    df = fn.data_fill(data,damping_columns=['surprise'],start_date=start_date,end_date=end_date)
+    dframe = fn.data_fill(data,damping_columns=['surprise'],damping_constant=0.6,start_date=start_date,end_date=end_date)
+    return dframe
+
+
+def close_5d_init(symbol:str,start_date=None,end_date=None):
+    with open(f'data_equity/{symbol}.dat','r') as f:
+        r = f.read()
+    close_dat = pd.read_json(r,convert_axes=True)
+    #close_dat.loc[:,'Date'] = pd.to_datetime(close_dat['Date'])
+    close_dat.sort_values(by='Date')
+
+    close_dat['Close_5d'] = close_dat['Adj Close'].shift(-5)
+    close_dat['Close_5d'] = (close_dat['Close_5d']-close_dat['Adj Close'])/close_dat['Adj Close']
+    close_dat=close_dat[['Date','Close_5d']]
+    close_dat=close_dat.iloc[:-5]
+    df = fn.data_fill(close_dat,start_date=start_date,end_date=end_date)
+
     return df
+
+
 
 
 
@@ -332,7 +389,7 @@ def terminate_and_run_proton(path,terminate=True,run=True):
 
 
 #not sure how to implement consistent start and end date functionality here 
-def get_bloomberg_data(symbol,max_page:int=10,start_date=None,end_date=None,file_method='w'):
+def get_bloomberg_data(symbol,max_page:int=50,start_date=None,end_date=None,file_method='w'):
     df = {'Date':[],'Headline':[],'Summary':[]}
     for page in range(max_page):
         url = f"https://www.bloomberg.com/markets2/api/search?page={page}&query={symbol}&sort=time:desc"
@@ -861,6 +918,9 @@ def news_formatter(symbol,
     #print(average_series)
     # Convert the average Series back to a DataFrame
     #average_df = pd.concat([df.iloc[:,0],pd.DataFrame({'Headline': average_series})],axis=1)
+    df['Date'] = pd.to_datetime(df['Date'])
+    # Format "Date" column as 'yyyy-mm-dd' (year-month-day)
+    df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')
     df = fn.data_fill(df,interpolate_columns='all',start_date=start_date,end_date=end_date)
     j = df.to_json(orient='records',date_format='iso')
     if file_method is not None:
@@ -870,8 +930,8 @@ def news_formatter(symbol,
     return df
 
 
-
-def news_init(symbol,prefix='news_sentiment',start_date=None,end_date=None):
+#going to keep news_init normal (meaning passing the file path instead of the data)
+def news_init(symbol:str,df=None,prefix='news_sentiment',start_date=None,end_date=None):
     with open(f'data_misc/{prefix}_{symbol}.dat','r') as file:
         r = file.read()
     df = pd.read_json(r)
@@ -929,10 +989,18 @@ def get_search_trend_data(company,start_date=datetime(2004,6,1),end_date=datetim
     return df
 
 
-def trend_init(symbol:str,start_date=None,end_date=None):
-    with open(f'data_misc/trend_{symbol}.dat', 'r') as file:
-        data = file.read()
-    trend_df = pd.read_json(data,convert_dates=True)
+
+def trend_init(symbol:str='none',df=None,start_date=None,end_date=None):
+    if symbol == 'none' and df is None:
+        print('trend_init Error: symbol and df cannot both be empty')
+    
+    if symbol!='none':
+        with open(f'data_misc/trend_{symbol}.dat', 'r') as file:
+            data = file.read()
+        trend_df = pd.read_json(data,convert_dates=True)
+    else:
+        trend_df = df
+    
     trend_df = fn.data_fill(trend_df,start_date=start_date,end_date=end_date)
     return trend_df
 
@@ -1087,7 +1155,7 @@ cik = {'AAL':6201,'AAPL':320193,'AMD':2488,
        'T':732717,'TGT':27419,'TSLA':1318605,'UPS':1090727,'WMT':104169}
 cik_df = pd.DataFrame(cik)
 '''
-cik = pd.read_csv('csv_data/SEC_CODES.csv')
+sec_data = pd.read_csv('csv_data/SEC_CODES.csv')
 
 def get_insider_trading_data(symbol:str,max_page:int=6,start_date=datetime(2005,1,1),end_date=datetime(2023,6,1),file_method='w'):
     #I'm thinking about doing percentage of securities owned vs acquired or sold
@@ -1096,7 +1164,7 @@ def get_insider_trading_data(symbol:str,max_page:int=6,start_date=datetime(2005,
         pages.append(80*n) #the sec includes 80 rows of data per page
 
     df = {'Date':[],'InsiderFlow':[]} #change will be negative for a sell, positive for a purchase
-    cik_code = cik.loc[cik['ticker']==symbol]
+    cik_code = sec_data.loc[sec_data['ticker']==symbol]
     cik_code = cik_code['cik'].iloc[-1]
     locator = str(cik_code).zfill(10)
     #print(locator)
@@ -1155,10 +1223,16 @@ def get_insider_trading_data(symbol:str,max_page:int=6,start_date=datetime(2005,
     return df
 
 
-def insider_init(symbol:str,start_date=None,end_date=None):
-    with open(f'data_misc/insider_{symbol}.dat','r') as file:
-        r = file.read()
-    data = pd.read_json(r,convert_axes=True)
+def insider_init(symbol:str='none',df=None,start_date=None,end_date=None):
+    if symbol=='none' and df is None:
+        print('insider_init Error, can\'t have empty symbol and df data')
+    
+    if symbol!='none':
+        with open(f'data_misc/insider_{symbol}.dat','r') as file:
+            r = file.read()
+        data = pd.read_json(r,convert_axes=True)
+    else:
+        data = df
     #replace all rows where insider_flow==1 to =0
     data['InsiderFlow'] = data['InsiderFlow'].replace(1,0)
     df = fn.data_fill(data,damping_columns=['InsiderFlow'],damping_constant=5.0,start_date=start_date,end_date=end_date)
@@ -1170,6 +1244,238 @@ def insider_init(symbol:str,start_date=None,end_date=None):
 
 
 
+
+#--------------------------------------------------------------------------------------
+#UNUSUAL OPTIONS FLOW AND PRICE TARGETS
+#--------------------------------------------------------------------------------------
+
+def get_options_flow(symbol,start_date=datetime(2016,1,1),end_date=datetime(2023,6,1),file_method='w'):
+    current_date = start_date
+    current_str = datetime.strftime(current_date,'%Y-%m-%d')
+
+    df = {'Date':[],'vOIR':[],'volatility':[],'delta':[]} #vOIR stands for volume open interest ratio. The higher the abs(vOIR), the more unusual the flow is
+    prev_volatility = 0
+
+    while current_date<=end_date:
+        #there won't be any options flow data on weekends
+        if current_date.weekday()>4:
+            current_date = current_date + timedelta(days=1)
+            current_str = datetime.strftime(current_date,'%Y-%m-%d')
+            continue
+            
+        url = f"https://www.barchart.com/proxies/core-api/v1/lists-snapshot/get?list=stocks.us.unusual_options&fields=symbol%2CbaseSymbol%2CbaseLastPrice%2CbaseSymbolType%2CsymbolType%2CstrikePrice%2CexpirationDate%2CdaysToExpiration%2CbidPrice%2Cmidpoint%2CaskPrice%2ClastPrice%2Cvolume%2CopenInterest%2CvolumeOpenInterestRatio%2Cvolatility%2Cdelta%2CtradeTime%2CsymbolCode&orderBy=volumeOpenInterestRatio&orderDir=desc&in(dateOnList%2C({current_str}))=&in(symbolType%2C(Call%2CPut))=&in(expirationType%2C(monthly%2Cweekly))=&in(baseSymbol%2C({symbol}))=&limit=100&page=1&raw=1&meta=field.shortName%2Cfield.type%2Cfield.description%2Clists.lastUpdate"
+
+        payload = {}
+        headers = {
+        'authority': 'www.barchart.com',
+        'accept': 'application/json',
+        'accept-language': 'en-US,en;q=0.9',
+        'cookie': '_gcl_au=1.1.239753414.1694226957; usprivacy=1YNY; _admrla=2.2-3bd8bb55f72c3979-e4e3ce55-4eb6-11ee-96e3-65bbce279b88; alo_uid=88940fbf-d7fb-4297-9569-d05811571d1b; _gd_visitor=5aeb8186-1c10-4c03-8901-08e7db64d0bb; _gd_svisitor=4d4036175f190000f4cb6663cf01000093725002; __browsiUID=e5c0743e-a1cc-4dc4-83eb-3c2999ec742c; _ga_4HQ9CY2XKK=GS1.1.1694235995.1.1.1694236036.19.0.0; bcFreeUserPageView=0; _gid=GA1.2.929628719.1695006544; _gd_session=59d087fc-3a08-494f-823c-0ce0d027dd43; __browsiSessionID=54354737-d3d3-45dd-99c5-f286bbeb5172&true&false&SEARCH&us&desktop-4.18.5&false; _ga_W0HSBQPE0S=GS1.1.1695006545.1.0.1695006546.0.0.0; cto_bundle=adCVpl8zSkdjYmdweGV1UGtWQ0FyZWFlb3VFWGk0MXA0QjZ0ODBQYW9YJTJCZ3UyQUQlMkIlMkJyUDkzbmw4c1Y1T0lMMmt6UTljaTVUWnZYak8wWUElMkJrWWFJdnpsdzQxJTJGMktGYXhualJTQURyN0d4NWUlMkJIUllRODF4NHA4MnM2YUE0ZzQlMkZER1B6ZGNPejJBM1d1V0t3RndQMG1VNmcxYXlFWTNkeE9mamFXNVRKa0UyRjc1d1AlMkJrTWF1NlJSY1RyRDZvSDdjMmgyRVlPcUNtcEhHNUZWNzdxSWwlMkZseTd3JTNEJTNE; webinar158WebinarClosed=true; IC_ViewCounter_www.barchart.com=3; _awl=2.1695006761.5-51e83fc2fc729d987337916c0e78ce70-6763652d75732d7765737431-0; _ga_PXEQ7G89EH=GS1.2.1695006548.2.0.1695006765.0.0.0; _hjSessionUser_2563157=eyJpZCI6ImJlZGE5NDc5LWU1MGEtNWRmYi05MjU0LWRjOTBlZDYwMTQ1NyIsImNyZWF0ZWQiOjE2OTQyMzQzNjkyMjksImV4aXN0aW5nIjp0cnVlfQ==; _hjSession_2563157=eyJpZCI6ImQ5M2I2N2U4LTkzODItNGRmYi1hNjA1LTVmMTZmZWM3OGVmZSIsImNyZWF0ZWQiOjE2OTUwMDY3ODg5ODYsImluU2FtcGxlIjpmYWxzZX0=; _hjAbsoluteSessionInProgress=0; remember_web_59ba36addc2b2f9401580f014c7f58ea4e30989d=eyJpdiI6IllVeVp0NVMraG9uQVhLTS9sMEJXM1E9PSIsInZhbHVlIjoiZmZiTDhuT1dGb1ZZS2s3NVpJM1c2WU85dFdZd3dITU5XQ3NEbG1YQlcwOWR0MXdVNWx1SE9FRENWWldxbG1wUnpGNkc3UlJzMlUwcXdjem1QaU5kZS9oMmc1eEcxT1lPS2djZWw2dGl6Q3ZraVlGUFI1d3FuN3p5Z1VQNWlSMTI1Q1VqQm5pN1ZKWWpYcTBoNjNSTEZ1RmdLVEJxOGV3Sk5keUhkS2tOS3R6M0gwTE9WNkE4N3htazlJeWdTYkdvODMzSUthWk50TlREWW1OeEdOd1ZGVjU3QnprbjBqZ3lJZ2h3bEdIMjIvND0iLCJtYWMiOiI2ZWQ5ZWNjNGIxNTI4ODJlNjQ4NzQyNzcxZThmMDExMDhmYzY4MDhiNmExNzcyZDE4MzI4N2M2ZjI4NTJlYjJiIn0%3D; market=eyJpdiI6IjlGSzNHN0xBSmR4SFJKQmtaT2J0d2c9PSIsInZhbHVlIjoiMUJxRjFYQVYreGhYeGRJMVkrMkFRbzl6M0IvSkE5U3NHRHFJV25Ddy9oSDRxSDV6YnJHdStVYUZtYnIvRlVqSyIsIm1hYyI6ImI1MjRiN2RhYTIwOWI5Yjc3OTQ2M2I2ZDljYzk3NTU5ZTM2YmIwOTM2N2UzYjdlZGNjNmMwMjI1MDkyYzFlOTcifQ%3D%3D; laravel_token=eyJpdiI6IkI3RlExZkMreERJYnI1RDY2SExSb1E9PSIsInZhbHVlIjoiT1JHRnF1SjlwV0NrMUdJSHFKYnVZL282RDBDN1FpVmlKdXFLbzQ0MFFOaG5xcUR0enNzWkN6WTgvdkRtUXhpeXUvcFJCTktQSmFrYWI3bytLeGlDNXBqeWk3a25UWk0va2FuV3dtTEtCa1R3Q2xMdXRja2R6clNnWkVaZUdmM0tUZnQ5ZHJxQ1JDNXhma0tQUk5pSENwMThpOUFnVWN3UUFmUDYvdjRuWEpPdkJhd2pObTl5cFI0bWxiMWRBeUhOZmZjM2NPTkRnVEUvcHFzMHRxWmZLQUU2MWcxUUhGcEQ5V3dwNGRBclFzeERuN2lpL3pVM2o1czl3YWRUY0FIMHVuS2w1NHpZTVhvQUV5b210MVFib2J3MEwwcjJkRUVKSHJLdU9FY2w3N0VaeklKeUtLQkdkTEoxRE5XV3NVaHUiLCJtYWMiOiJmYmUyMDA0NmNhNjZjMjQwMGMxMjlmZjU5NzljNWFhODI2ZmRjNzU4MjBiZDRjMzRjOTIxMTM5YTk4YzhhNDllIn0%3D; XSRF-TOKEN=eyJpdiI6IjNuSDZwbGNyOUg2L1dTZFFtTmF0cXc9PSIsInZhbHVlIjoiSXVMalNWM1Z6eS90QVBtTWplQzJqT0xVeEF6Z2hRM2I5NFNQYlZQOTJidFp5emZIbU9qelhIVFZJMUQ3clpRTXNSWlluenlMRVpwK0ZLN1lFdW5lYngzY2tqNlF3c2Rtb1hESTR1TWxadjR6OXJhdEhLNWh2UHJSWDYyMXpUSWUiLCJtYWMiOiIwMWFkOTFiMjYyMTkwMWI5ZjU3MWQxNWEyZTgwYzcyNWM3NDBlMTI5YWVlMjA3OTVmYWQ4ZWNjNGMzYjhlZDdhIn0%3D; laravel_session=eyJpdiI6IjI5bENqK2RUU2lKb3B6L29Id2IzUlE9PSIsInZhbHVlIjoiVENzMUF1R1IzL1ZHMzFIUFJlSWRrcy9zQTNhSkhzOHowSkxEUFFvdVJXLy9zakQrUmNkYkh2VnhVaytvOVVQYUR6VTByaDNVZGI0S2tveXlMNXhXK3NkdFJxdUgycVJiOUlGUlZpbG1rbk1aNTJReTJ4VXZzWFdIZzN5YkI4b3UiLCJtYWMiOiIzNzM2N2MwOTIxZjk0Yzk5NGYyZTZjMTJiYTFjZTgxN2JiZjk0N2ZkOGNmMzU3MzQ5YWEyNzY2ODFkODRkOTAyIn0%3D; _ga=GA1.2.1577042263.1694226957; unusualFilter=%7B%7D; __gads=ID=143414b2c8014ab6-221365c9c6e3003e:T=1694226955:RT=1695007224:S=ALNI_MZZ8agNptiDLliyUrTUDfzcJr4HSA; __gpi=UID=00000d9129b77101:T=1694226955:RT=1695007224:S=ALNI_Mbae-5YnVwTICOVbgcixHPkk_3hFg; _ga_PE0FK9V6VN=GS1.1.1695006544.4.1.1695007294.50.0.0; unusualFilterParams=%7B%22expirationType%22%3A%5B%22monthly%22%2C%22weekly%22%5D%2C%22symbolType%22%3A%5B%22Call%22%2C%22Put%22%5D%2C%22symbols%22%3A%22A%22%7D',
+        'referer': f'https://www.barchart.com/options/unusual-activity/stocks?type=historical&historicalDate={current_str}&useFilter=1',
+        'sec-ch-ua': '"Chromium";v="116", "Not)A;Brand";v="24", "Google Chrome";v="116"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+        #'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
+        'user-agent':'Mozilla/5.0 (X11; U; Linux 2.4.2-2 i586; en-US; m18) Gecko/20010131 Netscape6/6.01',
+        'x-xsrf-token': 'eyJpdiI6IjNuSDZwbGNyOUg2L1dTZFFtTmF0cXc9PSIsInZhbHVlIjoiSXVMalNWM1Z6eS90QVBtTWplQzJqT0xVeEF6Z2hRM2I5NFNQYlZQOTJidFp5emZIbU9qelhIVFZJMUQ3clpRTXNSWlluenlMRVpwK0ZLN1lFdW5lYngzY2tqNlF3c2Rtb1hESTR1TWxadjR6OXJhdEhLNWh2UHJSWDYyMXpUSWUiLCJtYWMiOiIwMWFkOTFiMjYyMTkwMWI5ZjU3MWQxNWEyZTgwYzcyNWM3NDBlMTI5YWVlMjA3OTVmYWQ4ZWNjNGMzYjhlZDdhIn0='
+        }
+
+        response = requests.request("GET", url, headers=headers, data=payload)
+        j = response.json()
+
+        vOIR = 0
+        delta = 0
+        volatility = prev_volatility
+        date = current_str
+        n = 0 #counter to perform averages
+
+        for data in j['data']:
+            try:
+                voir_temp = float(data["volumeOpenInterestRatio"])
+                if data["symbolType"] == 'Put':
+                    voir_temp*=-1
+                vOIR += voir_temp
+                #print(data["delta"])
+                #print(data["volatility"])
+                delta += float(data["delta"])
+                volatility += float(data["volatility"].strip("%"))
+                n+=1
+            except:
+                print('except block ran')
+                continue
+
+        if n>0:
+            delta/=n
+            volatility/=n
+            prev_volatility = volatility
+            vOIR/=n
+
+        df['Date'].append(date)
+        df['delta'].append(delta)
+        df['vOIR'].append(vOIR)
+        df['volatility'].append(volatility)                
+
+        current_date = current_date + timedelta(days=1)
+        current_str = datetime.strftime(current_date,'%Y-%m-%d')
+        if current_date.day == 1:
+            print(current_str)
+
+    df = pd.DataFrame(df)
+    json_data = df.to_json(orient='records',date_format='iso')
+
+    if file_method is not None:
+        with open(f'data_misc/optionsflow/{symbol}.dat',file_method) as f:
+            f.write(json_data)
+
+    return df
+
+
+
+
+def get_pricetargets(symbol:str,start_date=datetime(2016,1,1),end_date=datetime(2023,6,1),time_interval:int=5,file_method='w'):
+
+    if start_date is not None:
+        current_date = start_date
+        next_date = current_date + timedelta(days=time_interval)
+        current_str = datetime.strftime(current_date,'%Y-%m-%d')
+        next_str = datetime.strftime(next_date,'%Y-%m-%d')
+
+    with open(f'data_equity/{symbol}.dat','r') as file:
+        r = file.read()
+    price_dat = pd.read_json(r,convert_axes=True)
+    price_dat = price_dat[['Date','Adj Close']]
+    price_dat.rename(columns={'Adj Close':'Close'},inplace=True)
+
+    target_dat = {'Date':[],'Target':[],'GradeChange':[]}
+    count = 0 #keep track of how many times the data is empty
+
+    if start_date is not None:
+        while current_date<=end_date:
+            url = f'https://api.benzinga.com/api/v2.1/calendar/ratings?token=1c2735820e984715bc4081264135cb90&pagesize=1000&parameters[date_from]={current_str}&parameters[date_to]={next_str}&parameters[tickers]={symbol}&fields=fields%3Did,ticker,analyst_id,ratings_accuracy.smart_score,analyst_name,action_company,action_pt,adjusted_pt_current,adjusted_pt_prior,analyst,analyst_name,currency,date,exchange,id,importance,name,notes,pt_current,pt_prior,rating_current,rating_prior,ticker,time,updated,url,url_calendar,url_news,logo,quote'
+
+            payload = {}
+            headers = {
+            'authority': 'api.benzinga.com',
+            'accept': 'application/json, text/plain, */*',
+            'accept-language': 'en-US,en;q=0.9',
+            'origin': 'https://www.benzinga.com',
+            'referer': 'https://www.benzinga.com/',
+            'sec-ch-ua': '"Chromium";v="116", "Not)A;Brand";v="24", "Google Chrome";v="116"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-site',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36'
+            }
+
+            response = requests.request("GET", url, headers=headers, data=payload)
+            data = response.json()
+
+
+            if data:
+                count=0
+                for item in data['ratings']:
+                    date = item['date']
+                    print(date)
+                    try:
+                        pt = float(item['adjusted_pt_current'])
+                        pt_prior = float(item['adjusted_pt_prior'])
+                    except:
+                        continue
+
+                    #date_dt = datetime.strptime(date,)
+                    try:
+                        close = price_dat.loc[price_dat['Date'] == date, 'Close'].values[0]
+                    except:
+                        print('Close price loc error')
+                        continue
+                    #print(f'Close: {close} \t PT: {pt}')
+                    grade_change = (pt-pt_prior)/pt_prior
+
+                    target_dat['Date'].append(date)
+                    target_dat['Target'].append(pt-close)
+                    target_dat['GradeChange'].append(grade_change)
+
+            else:
+                count+=1        
+            
+            current_date=next_date+timedelta(days=1)
+            next_date = current_date + timedelta(days=time_interval)
+            current_str = datetime.strftime(current_date,'%Y-%m-%d')
+            next_str = datetime.strftime(next_date,'%Y-%m-%d')
+
+            if count>=10:
+                #terminate_and_run_proton(proton_path)
+                count=0
+
+    else:
+        url=f'https://api.benzinga.com/api/v2.1/calendar/ratings?token=1c2735820e984715bc4081264135cb90&pagesize=1000&parameters[tickers]={symbol}&fields=fields%3Did,ticker,analyst_id,ratings_accuracy.smart_score,analyst_name,action_company,action_pt,adjusted_pt_current,adjusted_pt_prior,analyst,analyst_name,currency,date,exchange,id,importance,name,notes,pt_current,pt_prior,rating_current,rating_prior,ticker,time,updated,url,url_calendar,url_news,logo,quote'
+        payload = {}
+        headers = {
+        'authority': 'api.benzinga.com',
+        'accept': 'application/json, text/plain, */*',
+        'accept-language': 'en-US,en;q=0.9',
+        'origin': 'https://www.benzinga.com',
+        'referer': 'https://www.benzinga.com/',
+        'sec-ch-ua': '"Chromium";v="116", "Not)A;Brand";v="24", "Google Chrome";v="116"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-site',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36'
+        }
+        response = requests.request("GET", url, headers=headers, data=payload)
+        data = response.json()
+        if data:
+            for item in data['ratings']:
+                date = item['date']
+                #print(date)
+                try:
+                    pt = float(item['adjusted_pt_current'])
+                    pt_prior = float(item['adjusted_pt_prior'])
+                except:
+                    continue
+
+                #date_dt = datetime.strptime(date,)
+                try:
+                    close = price_dat.loc[price_dat['Date'] == date, 'Close'].values[0]
+                except:
+                    #print('Close price loc error')
+                    continue
+                #print(f'Close: {close} \t PT: {pt}')
+                grade_change = (pt-pt_prior)/pt_prior
+                print('made it through block')
+                target_dat['Date'].append(date)
+                target_dat['Target'].append(pt-close)
+                target_dat['GradeChange'].append(grade_change)
+        else:
+            print('price target data error')
+
+
+    df = pd.DataFrame(target_dat)
+    j = df.to_json(orient='records',date_format='iso')
+    if file_method is not None:
+        with open(f'data_misc/pricetargets/{symbol}.dat',file_method) as file:
+            file.write(j)
+            
+    return df
+
+
+
+def pricetargets_init(symbol:str='none',df=None,start_date=None,end_date=None):  
+    if symbol!='none':
+        with open(f'data_misc/pricetargets/{symbol}.dat','r') as file:
+            r = file.read()
+        data = pd.read_json(r)
+    else:
+        data = df
+    dataframe = fn.data_fill(data,start_date=start_date,end_date=end_date)
+    return dataframe
 
 
 
@@ -1188,10 +1494,12 @@ def training_data_init(stocks_list,
                    retail_sentiment=True,
                    google_trend=True,
                    insider_data=True,
+                   pricetargets=True,
                    start_date=None,
                    end_date=None,
                    sequences=True,
                    sequence_length=16,
+                   target='1d',
                    file_name='TRAINING'):
     
     df_list = []
@@ -1230,6 +1538,10 @@ def training_data_init(stocks_list,
         if retail_sentiment:
             retail_df = fn.retail_sentiment_formatter(sym,start_date=start_date,end_date=end_date)
             data_list.append(retail_df)
+
+        if pricetargets:
+            pricetarget_df = pricetargets_init(sym,start_date=start_date,end_date=end_date)
+            data_list.append(pricetarget_df)
         
         for code in fed_list:
             data_list.append(fed_data[code])
@@ -1237,20 +1549,33 @@ def training_data_init(stocks_list,
         for city in city_list:
             data_list.append(housing_data[city])
 
+        if target=='5d' or target=='all':
+            data_list.append(close_5d_init(sym,start_date=start_date,end_date=end_date))
+
         if len(data_list)<2:
             df=data_list[0]
         else:
             df = fn.concatenate_data(data_list,start_date=start_date,end_date=end_date)
-            df.to_csv(f'csv_tests/concatenate_{sym}.csv')
+            #df.to_csv(f'csv_tests/concatenate_{sym}.csv')
 
 
         df = df.fillna(0)
         df.set_index('Date',inplace=True)
         if sequences:
-            df = fn.sequencizer(df,sequence_length)
-            
-        df['Close_Tmr'] = df['Close'].shift(-1)
-        df = df.drop(index=df.index[-1]) #drop the last row because the above shift method will result in NaN values
+            if pricetargets:
+                df = fn.sequencizer(df,sequence_length,ignore_columns=['Close_5d','Target','GradeChange'])
+            else:
+                df = fn.sequencizer(df,sequence_length,ignore_columns=['Close_5d'])
+
+        if target=='1d' or target=='all': 
+            df['Close_Tmr'] = df['Close'].shift(-1)
+            df = df.drop(index=df.index[-1]) #drop the last row because the above shift method will result in NaN values
+
+        if target!='1d' and target!='5d' and target != 'all':
+            print('target error')
+            return -1
+        print(df)
+
         print(f'Finished formatting {sym}')
         df.to_csv(f'csv_tests/formatted_{sym}.csv')
         df_list.append(df)
@@ -1271,28 +1596,53 @@ def eval_data_init(stock:str, #stock symbol
                    news_outlets = ['bloomberg','marketwatch'],
                    rsi = True, #include RSI momentum indicator
                    earnings = True,
+                   update_earnings=True,
                    retail_sentiment=True,
                    google_trend=True,
                    insider_data=True,
+                   pricetargets = True,
                    sequences = True,
                    sequence_length = 16,
+                   end_date = None
                    ): #hist is the number of days of history you want to include in the evaluation tensor
-    end_date = datetime.now()
-    hist = sequence_length*2
+    if end_date is None:
+        end_date = datetime.now()
+
+    hist = sequence_length*3
     start_date = end_date - timedelta(days=hist)
 
     df_list = []
-
+    processes = []
+    data_sources = []
+    '''
+    def data_appender_worker(args):
+        pth, get_function, symbol, start_date, end_date, concat, initialization_function = args
+        data = data_appender(pth, get_function, symbol, start_date=start_date, end_date=end_date, concat=concat, overwrite=concat)
+        if initialization_function.__name__ == news_init.__name__:
+            initialized_data = initialization_function(symbol=symbol,df=None, start_date=start_date, end_date=end_date)
+        else:
+            initialized_data = initialization_function(symbol='none',df=data, start_date=start_date, end_date=end_date)
+        return initialized_data
+    '''
+    #data_sources.append(equity_pth,get_equity_data,stock,start_date,end_date,True,fn.equity_formatter)
     #equity price
     equity_pth = f'data_equity/{stock}.dat'
-    equity_df = data_appender(equity_pth,get_equity_data,stock,start_date=start_date,end_date=end_date)
-    equity_df = fn.equity_formatter(stock,start_date=start_date,end_date=end_date)
+    equity_df = data_appender(equity_pth,get_equity_data,stock,start_date=start_date,end_date=end_date,concat=True,overwrite=True)
+    equity_df = fn.equity_formatter(df=equity_df,start_date=start_date,end_date=end_date)
     df_list.append(equity_df)
+    #print(equity_df)
 
     #earnings
     if earnings:
         earnings_pth = f'data_equity/{stock}_earnings.dat'
-        earnings_df = data_appender(earnings_pth,get_earnings,stock,start_date=start_date,end_date=end_date)
+        
+        if not update_earnings:
+            file_path = os.path.join(os.getcwd(), earnings_pth)
+            if not os.path.exists(file_path):
+                earnings_df = data_appender(earnings_pth,get_earnings,stock,start_date=start_date,end_date=end_date,concat=True,overwrite=True)
+        else:
+            earnings_df = data_appender(earnings_pth,get_earnings,stock,start_date=start_date,end_date=end_date,concat=True,overwrite=True)
+
         earnings_df = earnings_init(stock,start_date=start_date,end_date=end_date)
         df_list.append(earnings_df)
         #print('earnings')
@@ -1301,7 +1651,7 @@ def eval_data_init(stock:str, #stock symbol
     if google_trend:
         trend_pth = f'data_misc/trend_{stock}.dat'
         trend_df = data_appender(trend_pth,get_search_trend_data,stock,start_date=start_date,end_date=end_date)
-        trend_df = trend_init(stock,start_date=start_date,end_date=end_date)
+        trend_df = trend_init(symbol=stock,start_date=start_date,end_date=end_date)
         df_list.append(trend_df)
         #print('trend')
         #print(trend_df)
@@ -1315,13 +1665,14 @@ def eval_data_init(stock:str, #stock symbol
         for outlet in news_outlets:
             pth = news_pth(outlet)
             if outlet == 'seekingalpha':
-                data_appender(pth,get_seekingalpha_analysis,stock,start_date=start_date,end_date=end_date)
+                data_appender(pth,get_seekingalpha_analysis,stock,start_date=start_date,end_date=end_date,concat=True,overwrite=True)
             elif outlet == 'bloomberg':
-                data_appender(pth,get_bloomberg_data,stock,start_date=start_date,end_date=end_date)
+                data_appender(pth,get_bloomberg_data,stock,start_date=start_date,end_date=end_date,concat=True,overwrite=True)
             elif outlet == 'marketwatch':
-                data_appender(pth,get_marketwatch_data,stock,start_date=start_date,end_date=end_date)
+                data_appender(pth,get_marketwatch_data,stock,start_date=start_date,end_date=end_date,concat=True,overwrite=True)
 
         news_sentiment_df = news_formatter(stock,outlets=news_outlets,start_date=start_date,end_date=end_date,file_method=None)
+        #news_sentiment_df.drop(index=0,inplace=True)
         df_list.append(news_sentiment_df)
         #print(news_sentiment_df)
 
@@ -1336,17 +1687,26 @@ def eval_data_init(stock:str, #stock symbol
 
     if insider_data:
         indsider_pth = f'data_misc/insider_{stock}.dat'
+        #insider_df = data_appender(indsider_pth,get_insider_trading_data,stock,start_date=start_date-timedelta(days=30),end_date=end_date)
         insider_df = data_appender(indsider_pth,get_insider_trading_data,stock,start_date=start_date,end_date=end_date)
-        insider_df = insider_init(stock,start_date=start_date,end_date=end_date)
+        insider_df = insider_init(symbol=stock,start_date=start_date,end_date=end_date)
         df_list.append(insider_df)
         #print(insider_df)
     
     if retail_sentiment:
         retail_pth = f'data_equity/{stock}_retail_sentiment.dat'
-        retail_df = data_appender(retail_pth,get_retail_sentiment,stock,start_date=start_date,end_date=end_date)
+        retail_df = data_appender(retail_pth,get_retail_sentiment,stock,start_date=start_date,end_date=end_date,concat=True,overwrite=True)
         retail_df = fn.retail_sentiment_formatter(stock,start_date=start_date,end_date=end_date)
         df_list.append(retail_df)
         #print(retail_df)
+
+    if pricetargets:
+        pricetarget_pth = f'data_misc/pricetargets/{stock}.dat'
+        #pricetarget_df = data_appender(pricetarget_pth,get_pricetargets,stock,start_date=start_date-timedelta(days=30),end_date=end_date,concat=True,overwrite=True)
+        pricetarget_df = data_appender(pricetarget_pth,get_pricetargets,stock,start_date=start_date,end_date=end_date)
+        #pricetarget_df = pricetargets_init(symbol=stock,start_date=start_date-timedelta(days=30),end_date=end_date)
+        pricetarget_df = pricetargets_init(symbol=stock,start_date=start_date,end_date=end_date)
+        df_list.append(pricetarget_df)
     
     #federal reserve:
     def fed_pth(code):
@@ -1378,7 +1738,7 @@ def eval_data_init(stock:str, #stock symbol
 
     df_merged = df_list[0]
     for df in df_list[1:]:
-        df_merged = pd.merge(df_merged,df,on='Date',how='outer')
+        df_merged = pd.merge(df_merged,df,on='Date',how='outer',)
 
     #df_merged['Close_Tmr'] = df_merged['Close'].shift(-1)
     if rsi:
@@ -1388,10 +1748,10 @@ def eval_data_init(stock:str, #stock symbol
 
     df_merged.set_index('Date',inplace=True)
     if sequences:
-        df_merged = fn.sequencizer(df_merged,sequence_length)    
+        df_merged = fn.sequencizer(df_merged,sequence_length,ignore_columns=['Target','GradeChange'])    
 
     date_str = datetime.strftime(end_date,'%Y-%m-%d')
-    df_merged.to_csv(f'csv_data/{stock}-{date_str}.csv')
+    df_merged.to_csv(f'csv_data/equity/{stock}-{date_str}.csv')
     print(df_merged)
     return df_merged
 
@@ -1406,74 +1766,69 @@ def eval_data_init(stock:str, #stock symbol
 #sentiment_init(retail_stocks,retail_companies)
 #equity_init(model_stocks,model_companies)
 #as of now, seekingalpha_F.dat ends in 2015, so I am leaving ford out of the list
-'''
-model_stocks = ['AAL','AAPL','AMD','AMZN','BAC','BANC','BRK-B','CGNX','UPS','DELL','DIS',
-                'INTC','GE','TGT','MCD','MSFT','NVDA','NFLX','QCOM','ROKU','RUN','SBUX','WMT','GOOG','CSCO']
-#sentiment_init(model_stocks)
-pth = f'data_equity/{model_stocks[0]}_retail_sentiment.dat'
-#data_appender(pth,get_retail_sentiment,model_stocks[0])
-sequence_length=10
 
+model_stocks = ['AAPL','AAL','AXP','AMD','AMZN','BAC','BANC','BRK-B','UPS','DELL','DIS','INTC','GE','TGT','MCD','MSFT',
+                'NVDA','NFLX','QCOM','ROKU','RUN','SBUX','WMT','GOOG','CSCO','CAT','MMM','PG','WBA','V']
+
+sequence_length=5
+
+
+'''
 training_data_init(model_stocks,
                    end_date=datetime(2023,6,1),
-                   retail_sentiment=False,
-                   file_name='TRAINING_NRS-9-2',
+                   retail_sentiment=True,
+                   google_trend=False,
+                   file_name='TRAINING-9-10-2',
                    sequence_length=sequence_length,
-                   news_prefixes=['news_sentiment']
+                   news_prefixes=['news_sentiment'],
+                   target='all'
                    )
-
-
-'''
-'''
-sequence_length=10
-#get_insider_trading_data('SHOP')
-
-sym_list = ['PARA', 'PINS', 'PTEN'
-]
-
-for sym in sym_list:
-    eval_data_init(
-        sym,
-        sequence_length=sequence_length
-    )
-
-eval_data_init('ESRT',sequence_length=sequence_length,news_outlets=['bloomberg'])
-
-
-#get_bloomberg_data('AAPL',max_page=40)
-
-news_outlets = ['bloomberg','marketwatch']
-def news_pth(outlet):
-    pth = f'web_scraping/{stock}_{outlet}.dat'
-    return pth
-stock = 'AAL'
-end_date = datetime.now()
-start_date = end_date - timedelta(days=256)
-
-for outlet in news_outlets:
-    pth = news_pth(outlet)
-    if outlet == 'seekingalpha':
-        data_appender(pth,get_seekingalpha_analysis,stock,start_date=start_date,end_date=end_date)
-    elif outlet == 'bloomberg':
-        data_appender(pth,get_bloomberg_data,stock,start_date=start_date,end_date=end_date)
-    elif outlet == 'marketwatch':
-        data_appender(pth,get_marketwatch_data,stock,start_date=start_date,end_date=end_date)
-
-news_sentiment_df = news_formatter(stock,start_date=start_date,end_date=end_date,file_method=None)
-print(news_sentiment_df)
 '''
 
-barrons_stocks = ['AAPL','AMD','AMZN','BAC','BANC','BRK-B','UPS','DELL','DIS',
-                'INTC','GE','TGT','MCD','MSFT','NVDA','NFLX','QCOM','ROKU','RUN','SBUX','WMT','GOOG','CSCO','AXP','CAT','MMM','PG','WBA','V']
-for stock in barrons_stocks:
-    get_barrons_data(stock,time_interval=3)
+successful_tickers = []
+failed_tickers = []
 
-news_stocks = ['AXP','CAT','MMM','PG','WBA','V']
-for stock in news_stocks:
-    get_marketwatch_data(stock)
-    get_bloomberg_data(stock)
-    get_insider_trading_data(stock,max_page=50)
-    get_retail_sentiment(stock)
-    get_earnings(stock)
-    get_equity_data(stock)
-    get_search_trend_data(stock)
+end_date=datetime.now()-timedelta(hours=6)
+
+['ADM', 'AGNC', 'AMRS', 'APLD', 'APPH', 'ARR', 'ASXC', 'AUR', 'BKE', 'BLZE', 'C',
+  'CGNX', 'CMBM', 'COP', 'CVX', 'ENVX', 'ESRT', 'ETRN', 'EVRI', 'F', 'FCEL', 'FFIE', 
+  'FTC', 'FTI', 'GOEV', 'HARP', 'HAYW', 'HBI', 'HTZ', 'JD', 'M', 'META', 'MLM', 'MXL', 
+  'NHWK', 'OPCH', 'ORCL', 'PACW', 'PRPL', 'SHOP', 'T', 'TFC', 'TGT', 'TSLA', 'VIRX', 
+  'VTRS', 'WFC', 'WFRD', 'WSC', 'ATVI']
+
+
+
+#get_options_flow('AAPL',start_date=datetime(2020,8,1),end_date=datetime(2020,9,1))
+
+
+def marketengine():
+    failed_tickers = []
+    successful_tickers = []
+
+    count = 0
+
+    for sym in sec_data['ticker']:
+        sym = str(sym)
+        try:
+            eval_data_init(
+                sym,
+                google_trend=False,
+                update_earnings=False,
+                end_date=end_date, #IMPORTANT: delete this if you are running this during market hours or before midnight
+                news_outlets=['marketwatch','bloomberg'],
+                sequence_length=sequence_length
+            )
+            count = 0
+            successful_tickers.append(sym)
+        except:
+            print(f'Failed to get {sym} data')
+            failed_tickers.append(sym)
+            count += 1
+        if count>=5:
+            print('FIVE SEQUENTIAL ERRORS, EXITING...')
+            break
+
+    print(f'Successful tickers: {successful_tickers}')
+    print(f'Failed ticker: {failed_tickers}')
+
+marketengine()

@@ -1,74 +1,15 @@
 import functions as fn
 import pandas as pd
-from datetime import datetime
+from datetime import datetime,timedelta
+import numpy as np
+#from data_compilation import get_pricetargets
 
 #df = fn.equity_formatter('DIS')
 #print(df)
+
+
+
 '''
-df_list = []
-def open_news_data(symbol,outlet):
-    with open(f'web_scraping/{symbol}_{outlet}.dat','r') as file:
-        r = file.read()
-    df = pd.read_json(r)
-    return df
-df_list.append(open_news_data('AAL','bloomberg'))
-df_list.append(open_news_data('AAL','marketwatch'))
-
-count = 1
-new_list = []
-for df in df_list:
-    df['Date'] = pd.to_datetime(df['Date'])
-    df = df.sort_values(by='Date')
-    df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')
-    #df['Date'] = df['Date'].dt.set(hour=0, minute=0, second=0, microsecond=0)
-    df['Date'] = pd.to_datetime(df['Date'])
-    #df.rename(columns={'Headline':f'Headline_{count}'},inplace=True)
-    df.drop(columns=['Summary'],inplace=True)
-    df.reset_index(inplace=True,drop=True)
-    count+=1
-    new_list.append(df)
-
-df = pd.concat(new_list,axis=0)
-print(df)
-
-def earnings_init(symbol:str):
-    with open(f'data_equity/{symbol}_earnings.dat','r') as file:
-        r = file.read()
-    data = pd.read_json(r,convert_dates=True)
-    df = fn.datetime_forward_fill(data)
-    return df
-
-def interpolate_dataframe(df):
-    # Ensure the DataFrame is sorted by datetime
-    df.loc[:,'datetime'] = pd.to_datetime(df['datetime'])
-    df.sort_values(by='datetime', inplace=True)
-    
-    # Generate a date range with daily intervals between the min and max datetime
-    date_range = pd.date_range(start=df['datetime'].min(), end=df['datetime'].max(), freq='D')
-    
-    # Reindex the DataFrame with the generated date range
-    df = df.set_index('datetime').reindex(date_range)
-    
-    # Linearly interpolate the missing values
-    df.interpolate(method='linear', inplace=True)
-    df.index = df.index.set_names(['Date'])
-    df.reset_index(inplace=True)
-    
-    return df
-
-df = {'datetime':['2023-01-01','2023-01-01','2023-01-01','2023-01-07','2023-01-07','2023-01-11'],'values':[5,7,9,8,10,-2]}
-df = pd.DataFrame(df)
-df['datetime'] = pd.to_datetime(df['datetime'])
-#df_new = df_new.sort_values(by='Date')
-new_df = df.groupby('datetime').mean().reset_index()
-new_df.loc[:, ['values']] = new_df[['values']].pct_change()
-# Drop the first row with NaN values
-new_df.drop(index=0, inplace=True)
-#new_df = interpolate_dataframe(df)
-print(new_df)
-
-
-#df = fn.housing_formatter('NewYork')
 
 
 df = {'Date':['2023-01-01','2023-01-07','2023-01-11'],'values':[5,7,9],'nums':[2,3,6],'pol':[8,20,30]}
@@ -81,35 +22,7 @@ print(df_new)
 '''
 import numpy as np
 
-def append_previous_n_data_points(arr, n, direction='left'):
-    m, k = arr.shape
-    p = n-1
-    n = k*(n-1)
-    new_k = k + n
-    new_arr = np.zeros((m, n), dtype=arr.dtype)
 
-    if direction == 'right':
-        for i in range(m):
-            new_arr[i, n:] = arr[i]
-            if i > 0:
-                new_arr[i, :n] = arr[i - 1, -n:]
-        new_arr = new_arr[p:]
-    elif direction == 'left':
-        for i in range(m):
-            new_arr[i, :k] = arr[i]
-            if i < m - 1:
-                new_arr[i, k:] = arr[i + 1]
-        new_arr = new_arr[:-p]
-    else:
-        raise ValueError("Direction must be 'right' or 'left'.")
-
-    return new_arr
-
-array = [[1, 13, 6,5,1],[9, 4, 7,9,0],[19, 16, 2,-6,1],[2,3,5,-6,0],[7,7,17,-5,1]]
-input_arr = np.array(array)
-
-#append_arr = append_previous_n_data_points(input_arr,3)
-#print(append_arr)
 
 
 def sequencizer(X,n,direction='left'):
@@ -165,42 +78,12 @@ df = pd.DataFrame(data)
 df.to_csv('csv_data/SEC_CODES.csv')
 '''
 
-'''
-def remove_weekend_rows(df:pd.DataFrame,average:bool=True): 
-    #setting average = True averages the weekend column with the most recent data available
-    # Check if the DataFrame has a 'Date' column
-    if 'Date' not in df.columns:
-        print("Error: 'Date' column not found in the DataFrame.")
-        return None
 
-    # Filter out weekend rows (Saturday and Sunday)
-    #df = df[df['Date'].dt.weekday < 5]
-    index = 0
-    hit_weekday = False
 
-    while index < df.shape[0]:
-        if hit_weekday == False:
-            if df['Date'].iloc[index].dt.weekday<5:
-                hit_weekday=True
-            else:
-                df.drop(index,axis=0,inplace=True)
-            index += 1
-            continue
-        
-        if df['Date'].iloc[index].dt.weekday>4:
-            for col in list(df.columns[1:]):
-                val1 = float(df[col].iloc[index])
-                val2 = float(df[col].iloc[index-1]) 
-                avg = (val1+val2)/2
-                df[col].iloc[index-1] = avg
-            df.drop(index,axis=0,inplace=True)
-        index+=1
-    
-    #return averaged_df
 '''
 import re
-df = pd.read_csv('csv_tests/comparison_classifier-9-2.csv')
-threshold = 0.60
+df = pd.read_csv('csv_tests/EVAL-9-12.csv')
+threshold = 0.65
 
 def get_probs(tensor):
     tensor = tensor.strip('()')
@@ -232,3 +115,162 @@ print(f'count 0: {count_0}')
 print(f'accuracy 0: {correct_0/count_0}')
 print(f'count 1: {count_1}')
 print(f'accuracy 1: {correct_1/count_1}')
+
+sym_list = ['AAPL','AMD','AMZN','BAC','BANC','BRK-B','UPS','DELL','DIS','MRVL', 'WBD','CSX', 'PYPL', 'JNJ', 'RBLX','BAX',
+            'ET', 'NOV', 'DISH', 'LUMN', 'KO', 'SPWR', 'PEP', 'LAZR', 'MAT','HOOD', 'AMAT', 'WBA', 'EYE', 'JPM', 'FHN', 'CARR',
+            'INTC','GE','TGT','MCD','MSFT','NVDA','NFLX','QCOM','ROKU','WMT','GOOG','CSCO','AXP','CAT','MMM','PG','WBA',
+            'V','AKAM','AES','BYND','BAC','CMCSA','FITB','FLEX','IP','LSXMK','MTCH','PLUG','RKT','T','UBER','VICI','VTRS',
+            'SMPL','VZ','DAL','HAL','PFE','ET','HLIT','FTAI','UCTT','XPOF','NOG','A','AA','ABBV','ABNB','ABT',
+            'ACHR','ADM','LCID','SOUN','QS','LUV','AI','ENVX','NYCB','MU','NCLH','KEY','BMY','OPEN','LYFT','KDP',
+            'RIOT','CVNA','UPST','NOVA','FCEL','SBUX','RUN','FUBO', 'RCL', 'PCG', 'EBAY', 'GM', 'SPCE',
+            'JBLU', 'BA', 'GPS', 'CROX', 'IONQ', 'WU', 'ARR', 'MXL','COIN', 'SNAP', 'HBAN', 'AR', 'FSR',
+            'FCX', 'KMI','SCHW', 'PARA', 'PINS', 'PTEN','RTX','TDOC','WSC','USB']
+'''
+
+import time
+import yfinance as yf
+import json
+import requests
+
+start_time = time.time()
+
+# Your code to measure runtime goes here
+
+import os
+
+def get_equity_data(symbol:str,start_date=datetime(2000,1,1),end_date=datetime(2023,6,1),api:str='yf',file_method='w',data_method='download'):
+    start_date=datetime.strftime(start_date,'%Y-%m-%d')
+    end_date=datetime.strftime(end_date,'%Y-%m-%d')
+
+    if api == 'yf':
+        if data_method=='download':
+            data = yf.download(symbol,start=start_date,end=end_date)
+            df = pd.DataFrame(data)
+            df.reset_index(inplace=True)
+
+        elif data_method=='history':
+            ticker = yf.Ticker(symbol)
+            data = ticker.history(period='1mo')
+            df = pd.DataFrame(data)
+            df.insert(loc=4,column='Adj Close',value=df['Close'])
+            df.drop(columns=['Dividends', 'Stock Splits'],inplace=True)
+            df.reset_index(inplace=True)
+            df['Date'] = df['Date'].astype(str)
+            df['Date'] = df['Date'].apply(lambda x: x[:10])
+            df.loc[:,'Date'] = pd.to_datetime(df['Date'])
+
+        else:
+            print('Invalid data method')
+            return -1
+        
+        j = df.to_json(orient='records',date_format='iso')
+
+        if file_method is not None: 
+            with open(f'data_equity/{symbol}.dat', file_method) as file:
+                file.write(j)
+
+    elif api=='alphavantage':
+        url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&outputsize=full&apikey=1C3O71BAB7HJXTWZ"
+        try:
+            r = requests.get(url)
+            data = r.json()
+            df = pd.DataFrame(data).reset_index()
+
+            if 'Error Message' in data:
+                print(f"Error in alphavantage request for {symbol}")
+            elif file_method is not None:
+                with open(f'data_equity/{symbol}_AV.dat',file_method) as file:
+                    json.dump(data,file)             
+        except:
+            print("An error occured: could not request AlphaVantage data")
+    
+    else:
+        print("Invalid api")
+    return df
+
+
+
+def data_appender(pth: str,
+                  get_function: callable,
+                  symbol: str,
+                  start_date: datetime = None,
+                  end_date: datetime = datetime.now(),
+                  concat: bool = False,
+                  sequence_length = 5,
+                  overwrite=False):
+    # Create the full file path by joining the cwd and the provided path
+    full_path = os.path.join(os.getcwd(), pth)
+
+    if overwrite==True and concat==False:
+        print('Caution: recommended setting is concat=True when overwrite=True')
+
+    if start_date is None:
+        start_date = end_date - timedelta(days=sequence_length*3)
+
+    if os.path.isfile(full_path) and os.path.getsize(full_path) > 0:
+        with open(full_path, 'r') as f:
+            df = pd.read_json(f, convert_dates=True)
+
+        #df.loc[:,'Date'] = pd.to_datetime(df['Date'])
+
+        recent_date = df['Date'].iloc[-1]
+
+        if recent_date + timedelta(days=1) > end_date:
+            print('No new data to append')
+            start_date = fn.find_closest_date(df, start_date, direction='left')
+            df = df.loc[df['Date'] >= start_date]
+            return df
+        
+    else:
+        recent_date = None
+        df = None
+
+    if recent_date is None:
+        starting_date = start_date
+    elif start_date < recent_date:
+        starting_date = recent_date + timedelta(days=1)
+    else:
+        starting_date = start_date
+
+    if get_function.__name__ == get_equity_data.__name__:
+        data = get_function(symbol, start_date=starting_date, end_date=end_date, file_method=None, data_method='history')
+    elif get_function.__name__ == 'get_bloomberg_data':
+        data = get_function(symbol, start_date=start_date,end_date=end_date,file_method=None,max_page=int(sequence_length/1.5))
+    else:
+        data = get_function(symbol, start_date=starting_date, end_date=end_date, file_method=None)
+
+    if not concat:
+        df = data
+    else:
+        df = pd.concat([df, data], axis=0, ignore_index=True)
+
+    j = df.to_json(orient='records', date_format='iso')
+    if overwrite:
+        with open(full_path, 'w') as f:
+            f.write(j)
+
+    return df
+
+
+# Example usage:
+# df = ...  # Your DataFrame
+# result = data_fill(df, start_date=datetime(2020, 1, 1), end_date=datetime(2021, 12, 31))
+
+
+with open('data_equity/WMT.dat','r') as f:
+    r = f.read()
+
+df = pd.read_json(r,convert_axes=True)
+df.loc[:,'Date'] = pd.to_datetime(df['Date'])
+start_date = datetime.now()
+end_date = start_date - timedelta(days=20)
+symbol = 'AAL'
+
+df = data_appender('data_equity/AAL.dat',get_equity_data,symbol,start_date=start_date,overwrite=False)
+df = fn.data_fill(df,percent_columns=['Close','Adj Close'])
+print(df)
+
+end_time = time.time()
+runtime = end_time - start_time
+
+print(f"Runtime: {runtime:.4f} seconds")
