@@ -22,8 +22,8 @@ time.sleep(5)
 
 email = driver.find_element(By.CLASS_NAME,'form-field-login')
 password = driver.find_element(By.CLASS_NAME,'form-field-password')
-email.send_keys("alfred.ricker7@gmail.com")
-password.send_keys("PahowSowp613")
+email.send_keys("")
+password.send_keys("")
 pickle.dump(driver.get_cookies(), open("web_scraping/barchart_cookies.pkl", "wb"))
 '''
 
