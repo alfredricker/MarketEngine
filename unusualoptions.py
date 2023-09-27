@@ -112,13 +112,16 @@ else:
     print("File does not exist.")
 
 
-def format_optionsflow(start_date:datetime,end_date:datetime):
+def format_optionsflow(start_date:datetime,end_date:datetime,print_option:bool=True):
     current_date = start_date
     current_str = datetime.strftime(current_date,'%Y-%m-%d')
 
     df_dict = {}
 
     while current_date <= end_date:
+        if print_option==True:
+            print(current_date)
+
         try:
             options_df = pd.read_csv(f'data_misc/optionsflow/Unusual-Stock-Options-Activity-{current_str}.csv')
         except Exception as e:
@@ -157,6 +160,9 @@ def format_optionsflow(start_date:datetime,end_date:datetime):
         current_str = datetime.strftime(current_date,'%Y-%m-%d')
 
     for symbol,df in df_dict.items():
+        if print_option==True:
+            print(symbol)
+
         if start_date<datetime(2020,5,1):
             df['Date'].insert(0,datetime.strftime(start_date,'%Y-%m-%d'))
             df['volOI'].insert(0,0)
@@ -172,4 +178,6 @@ def format_optionsflow(start_date:datetime,end_date:datetime):
             f.write(data)
 
 format_optionsflow(datetime(2016,1,1),datetime(2023,6,1))
+
+
 

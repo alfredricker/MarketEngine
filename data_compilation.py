@@ -24,7 +24,7 @@ alphavantage_key='O7TXW0XZOPYNKC5D'
 #alphavantage_key = 'B71NVO0WITDQFLF4'
 benzinga_key = '4edd94fa08d140a78309628f689b7ada'
 
-proton_path = r"C:\Program Files\Proton\VPN\v3.1.0\ProtonVPN.exe"
+proton_path = r"C:\Program Files\Proton\VPN\v3.1.1\ProtonVPN.exe"
 
 def change_alphavantage_key(key):
     if key=='1C3O71BAB7HJXTWZ':
@@ -544,7 +544,7 @@ def get_marketwatch_data(company,start_date:datetime=datetime(2016,1,1),end_date
 
         if len(headline_elements) == 0:
             #terminate_and_run_proton(r"D:\Program Files (x86)\Proton Technologies\ProtonVPN\ProtonVPN.exe")
-            terminate_and_run_proton(r"C:\Program Files\Proton\VPN\v3.1.0\ProtonVPN.exe")
+            terminate_and_run_proton(proton_path)
             counter+=1
             continue
         else:
@@ -624,7 +624,7 @@ def get_barrons_data(company,max_page:int=60,start_date=datetime(2016,1,1),end_d
             response = requests.request("GET", url, headers=headers, data=payload)
             data = response.json()
         except:
-            terminate_and_run_proton(r"C:\Program Files\Proton\VPN\v3.1.0\ProtonVPN.exe")
+            terminate_and_run_proton(proton_path)
             continue        
         
         ids = [item["id"] for item in data["collection"]]
@@ -700,7 +700,7 @@ def get_seekingalpha_analysis(symbol,start_date=datetime(2010,1,1),end_date=date
     if symbol=='BRK-B':
         symbol = 'BRK.B'
 
-    terminate_and_run_proton(r"C:\Program Files\Proton\VPN\v3.1.0\ProtonVPN.exe",terminate=False)
+    terminate_and_run_proton(proton_path,terminate=False)
     #terminate_and_run_proton(r"D:\Program Files (x86)\Proton Technologies\ProtonVPN\ProtonVPN.exe",terminate=False)
     counter=0
     while next_date <= end_date:
@@ -737,7 +737,7 @@ def get_seekingalpha_analysis(symbol,start_date=datetime(2010,1,1),end_date=date
             continue
         if not 'data' in j:
             #terminate_and_run_proton(r"D:\Program Files (x86)\Proton Technologies\ProtonVPN\ProtonVPN.exe")
-            terminate_and_run_proton(r"C:\Program Files\Proton\VPN\v3.1.0\ProtonVPN.exe")
+            terminate_and_run_proton(proton_path)
             response = requests.request("GET", url, headers=headers, data=payload)
             j = response.json()
             counter+=1
@@ -1770,6 +1770,9 @@ def eval_data_init(stock:str, #stock symbol
 model_stocks = ['AAPL','AAL','AXP','AMD','AMZN','BAC','BANC','BRK-B','UPS','DELL','DIS','INTC','GE','TGT','MCD','MSFT',
                 'NVDA','NFLX','QCOM','ROKU','RUN','SBUX','WMT','GOOG','CSCO','CAT','MMM','PG','WBA','V']
 
+for stock in model_stocks[2:]:
+    get_barrons_data(stock)
+
 sequence_length=5
 
 
@@ -1831,4 +1834,4 @@ def marketengine():
     print(f'Successful tickers: {successful_tickers}')
     print(f'Failed ticker: {failed_tickers}')
 
-marketengine()
+#marketengine()
