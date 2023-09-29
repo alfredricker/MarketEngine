@@ -24,7 +24,7 @@ from torchmetrics import Accuracy
 pl.seed_everything(42) #make results reproducible
 # Load and preprocess your data
 #df = pd.read_csv('DATA_SENTIMENT.csv')
-df = pd.read_csv('csv_data/TRAINING-9-10.csv')
+df = pd.read_csv('csv_data/TRAINING-9-27.csv')
 df = df.iloc[:,1:] #remove the unwanted index column
 df.fillna(value=0,inplace=True)
 size = df.shape[1]
@@ -117,7 +117,7 @@ class TimeSeriesDataModule(pl.LightningDataModule):
             #num_workers=10
         )
     
-num_epochs = 20
+num_epochs = 25
 
 data_module = TimeSeriesDataModule(X_train,X_test,Y_train,Y_test,batch_size=batch_size)
 
@@ -199,7 +199,7 @@ model.to(device)
 
 checkpoint_callback = ModelCheckpoint(
     dirpath="CHECKPOINTS",
-    filename="best-checkpoint-9-10.ckpt",
+    filename="best-checkpoint-9-28.ckpt",
     save_top_k=1,
     verbose=True,
     monitor="val_loss",
@@ -219,7 +219,7 @@ trainer = pl.Trainer(
 
 def train_model():
     trainer.fit(model,data_module)
-    torch.save(model.state_dict(),'CHECKPOINTS/CLASSIFIER-9-10.ckpt')
+    torch.save(model.state_dict(),'CHECKPOINTS/CLASSIFIER-9-28.ckpt')
 
     #get the numpy array of the predicted values
     with torch.no_grad():
@@ -255,18 +255,19 @@ def train_model():
     }
 
     df_comparison = pd.DataFrame(data)
-    df_comparison.to_csv('csv_tests/comparison_classifier-9-10-2.csv')
+    df_comparison.to_csv('csv_tests/comparison_classifier-9-28.csv')
 
 
 #train_model()
 #sys.exit()
 
 
-sym_list =   ['A', 'AA', 'AAL', 'AAOI', 'AAPL', 'ABBV', 'ABNB', 'ABT', 'ACHR', 'ADBE', 'ADM', 'AES', 'AI', 'AKAM', 'AMAT', 'AMD', 'AMZN', 'AR', 'AVGO', 'AXP', 'BA', 'BAC', 'BANC', 'BAX', 'BMY', 'BRK-B', 'BSX', 'BX', 'BYND', 'CARR', 'CAT', 'CHPT', 'CMCSA', 'COIN', 'COP', 'CRM', 'CROX', 'CSCO', 'CSX', 'CVNA', 'DAL', 'DELL', 'DIS', 'DISH', 'DOCU', 'DVN', 'EBAY', 'ET', 'ET', 'ETSY', 'EW', 'EYE', 'FCX', 'FDX', 'FHN', 'FITB', 'FLEX', 'FSLY', 'FSR', 'FTAI', 'FUBO', 'GE', 'GM', 'GOOG', 'GPS', 'HAL', 'HBAN', 'HLIT', 'HOOD', 'INTC', 'IONQ', 'IP', 'JBLU', 'JNJ', 'JPM', 'KDP', 'KEY', 'KMI', 'KO', 'KVUE', 'LAZR', 'LCID', 'LLY', 'LSXMK', 'LUMN', 'LUV', 'LYFT', 'MARA', 'MAT', 'MCD', 'MRVL', 'MSFT', 'MTCH', 'MU', 'NCLH', 'NET', 'NFLX', 'NOG', 'NOV', 'NOVA', 'NVDA', 'NYCB', 'OPEN', 'OSTK', 'PARA', 'PCG', 'PEP', 'PFE', 'PG', 'PINS', 'PLUG', 'PTEN', 'PWR', 'PYPL', 'QCOM', 'QS', 'RBLX', 'RCL', 'RIOT', 'RKT', 'ROKU', 'RTX', 'RUN', 'SBUX', 'SCHW', 'SHAK', 'SIRI', 'SMPL', 'SNAP', 'SOFI', 'SOUN', 'SPCE', 'SPWR', 'TDOC', 'TER', 'TGT', 'TTD', 'TWNK', 'U', 'UBER', 'UCTT', 'UPS', 'UPST', 'USB', 'V', 'VICI', 'VLO', 'VZ', 'WBD', 'WMT', 'WU', 'ZM']
-
+sym_list = ['A', 'AA', 'AAL', 'AAOI', 'AAPL', 'ABBV', 'ABNB', 'ABT', 'ACHR', 'ADBE', 'ADM', 'AES', 'AI', 'AKAM', 'AMAT', 'AMD', 'AMZN', 'APLD', 'AR', 'AVGO', 'AXP', 'BA', 'BAC', 'BANC', 'BAX', 'BMY', 'BOWL', 'BRK-B', 'BSX', 'BX', 'BYND', 'CARR', 'CAT', 'CHPT', 'CMCSA', 'COIN', 'COP', 'CRM', 'CROX', 'CSCO', 'CSX', 'CVNA', 'DAL', 'DELL', 'DIS', 'DISH', 'DOCU', 'DVN', 'EBAY', 'ENVX', 'ET', 'ET', 'ETSY', 'EW', 'EYE', 'FDX', 'FHN', 'FITB', 'FLEX', 'FSLY', 'FSR', 'FUBO', 'GE', 'GM', 'GOOG', 'GPS', 'HAL', 'HBAN', 'HLIT', 'HOOD', 'INTC', 'IONQ', 'IP', 'JBLU', 'JNJ', 'JPM', 'KDP', 'KEY', 'KMI', 'KO', 'KVUE', 
+'LCID', 'LLY', 'LSXMK', 'LUMN', 'LUV', 'LYFT', 'MARA', 'MAT', 'MCD', 'MMM', 'MRVL', 'MSFT', 'MTCH', 'MU', 'NCLH', 'NET', 'NFLX', 'NOG', 'NOV', 'NOVA', 'NVDA', 'NYCB', 'OPCH', 'OPEN', 'OSTK', 'PARA', 'PCG', 'PEP', 'PFE', 'PG', 'PINS', 'PLUG', 'PTEN', 'PWR', 'PYPL', 'QCOM', 'QS', 'RBLX', 'RCL', 'RIOT', 'RKT', 'ROKU', 'RTX', 'RUN', 'SBUX', 'SCHW', 'SHAK', 'SIRI', 'SMPL', 'SNAP', 'SOFI', 'SOUN', 'SPCE', 'SPWR', 'TER', 'TGT', 'TTD', 'TWNK', 'U', 'UBER', 'UPS', 'UPST', 
+'USB', 'V', 'VICI', 'VLO', 'VZ', 'WBA', 'WBD', 'WMT', 'WU', 'XPOF', 'ZM']
 device = 'cpu'
 
-checkpoint = torch.load('CHECKPOINTS/CLASSIFIER-9-10.ckpt')
+checkpoint = torch.load('CHECKPOINTS/CLASSIFIER-9-27.ckpt')
 model.load_state_dict(checkpoint)
 model.to(device)
 #mod = PricePredictor.load_from_checkpoint('CHECKPOINTS/best-checkpoint-9-1.ckpt')
@@ -287,7 +288,7 @@ def preprocess_eval_data(pth):
 
 def preprocess_multiple_eval_data(sym_list):
     def sym_pth(sym):
-        pth = f'csv_data/equity/{sym}-2023-09-18.csv'
+        pth = f'csv_data/equity/{sym}-2023-09-28.csv'
         return pth
     df_list = []
     
@@ -295,9 +296,9 @@ def preprocess_multiple_eval_data(sym_list):
         pth = sym_pth(sym)
 
         data = pd.read_csv(pth)
-        data['Close_Tmr'] = data['Close'].shift(-1)
+        data['Close_5d'] = data['Close'].shift(-5)
         #data = data.drop(index=data.index[-1])
-        data = data[:-2]
+        data = data.dropna()
 
         data = data.iloc[:,1:]
         df_list.append(data)
@@ -319,12 +320,12 @@ model.eval()
 #trading_dict = {'Ticker':[],'Predicted':[],'PredictedProbs':[]}
 
 def stock_pth(symbol):
-    pth = f'csv_data/equity/{symbol}-2023-09-18.csv'
+    pth = f'csv_data/equity/{symbol}-2023-09-28.csv'
     return pth
 
 trading_dict = {'Ticker':[],'Predicted':[],'PredictedProbs':[]}
 
-
+'''
 for sym in sym_list:
     pth = stock_pth(sym)
     data = preprocess_eval_data(pth)
@@ -346,10 +347,10 @@ for sym in sym_list:
     trading_dict['PredictedProbs'].append(prob_tuple)
 
 df_eval = pd.DataFrame(trading_dict)
-df_eval.to_csv('csv_data/EVAL-9-18.csv')
-
-
+df_eval.to_csv('csv_data/EVAL-9-28.csv')
 '''
+
+
 data = preprocess_multiple_eval_data(sym_list)
 X_dat = data[0]
 Y_dat = data[1]
@@ -370,5 +371,4 @@ file_data = {
         'Predicted-Probs': predicted_prob_tuples
     }
 df_eval = pd.DataFrame(file_data)
-df_eval.to_csv('csv_tests/EVAL-9-12.csv')
-'''
+df_eval.to_csv('csv_tests/EVAL-9-27.csv')

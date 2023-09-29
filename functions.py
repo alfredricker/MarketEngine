@@ -548,23 +548,10 @@ def sequencizer(df, n_steps,ignore_columns=[]):
     
     for column in col_list:
         for i in range(1,n_steps+1):
-            df[f'{column}(t-{i})'] = df[column].shift(i)
-            
-    df.dropna(inplace=True)
-    return df
-
-
-def sequencizer_with_rolling_mean(df, n_steps, ignore_columns=[]):
-    df = dc(df)
-    col_list = list(df.columns)
-
-    if ignore_columns:
-        for col in ignore_columns:
-            col_list.remove(col)
-
-    for column in col_list:
-        for i in range(1, n_steps + 1):
-            df[f'{column}_avg(t-{i})'] = df[column].rolling(window=5).mean().shift(i)
+            #df[f'{column}(t-{i})'] = df[column].shift(i)
+            new_col_name = f'{column}(t-{i})'    
+            insert_index = df.columns.get_loc(f'{column}(t-{i-1})') + 1 if i > 1 else df.columns.get_loc(column) + 1  # Place the new column to the right of the previous one
+            df.insert(insert_index, new_col_name, df[column].shift(i))
 
     df.dropna(inplace=True)
     return df

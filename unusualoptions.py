@@ -177,7 +177,96 @@ def format_optionsflow(start_date:datetime,end_date:datetime,print_option:bool=T
         with open(f'data_misc/optionsflow/{symbol}.dat','w') as f:
             f.write(data)
 
-format_optionsflow(datetime(2016,1,1),datetime(2023,6,1))
+#format_optionsflow(datetime(2016,1,1),datetime(2023,6,1))
 
+
+def get_options_flow(single_date=None,start_date=None,end_date=None, file_method='a',print_option=False):
+    if single_date is None and start_date is None and end_date is None:
+        print('get options flow error. incorrect combination of inputs')
+    
+    if single_date is not None:
+        current_date=single_date
+        end_date=current_date
+    else:
+        current_date = start_date
+    
+    current_str = datetime.strftime(current_date,'%Y-%m-%d')
+
+    df_dict = {}
+
+    while current_date <= end_date:
+        if print_option==True:
+            print(current_date)
+
+        try:
+            options_df = pd.read_csv(f'data_misc/optionsflow/Unusual-Stock-Options-Activity-{current_str}.csv')
+        except Exception as e:
+            current_date = current_date + timedelta(days=1)
+            current_str = datetime.strftime(current_date,'%Y-%m-%d')
+            continue
+
+        for index,value in options_df.iterrows():
+            try:
+                volOI = float(value['Vol/OI'])
+            except:
+                volOI = float(value['Vol/OI'].replace(',',''))
+            try:
+                iv = float(value['IV'].strip('%'))/100
+            except:
+                iv = str(value['IV']).strip('%')
+                iv = iv.replace(',','')
+                iv = float(iv)
+
+            delta = float(value['Delta'])
+            symbol = value['Symbol']
+
+            if value['Type'] == 'Put':
+                volOI*=-1
+
+            if symbol in df_dict:
+                #print(df_dict)
+                df_dict[symbol]['Date'].append(current_str)
+                df_dict[symbol]['volOI'].append(volOI)
+                df_dict[symbol]['IV'].append(iv)
+                df_dict[symbol]['delta'].append(delta)
+            else:
+                df_dict[symbol] = {'Date':[current_str],'volOI':[volOI],'IV':[iv],'delta':[delta]}
+
+        current_date = current_date + timedelta(days=1)
+        current_str = datetime.strftime(current_date,'%Y-%m-%d')
+
+    for symbol,df in df_dict.items():
+        if print_option==True:
+            print(symbol)
+
+        df = pd.DataFrame(df)
+        if single_date is not None:
+            df_filled = df
+        else:
+            df_filled = fn.data_fill(df,start_date=start_date,end_date=end_date,damping_columns='all',damping_constant=0.4)
+
+        if file_method=='w':
+            data = df_filled.to_json(orient='records',date_format='iso')
+            with open(f'data_misc/optionsflow/{symbol}.dat','w') as f:
+                f.write(data)
+
+        elif file_method=='a':
+            try:
+                with open(f'data_misc/optionsflow/{symbol}.dat','r') as f:
+                    d = f.read()
+                df = pd.read_json(d,convert_axes=True)
+                data = pd.concat([df,df_filled],ignore_index=True)
+                j = data.to_json(orient='records',date_format='iso')
+            except:
+                j = df_filled.to_json(orient='records',date_format='iso')
+
+            with open(f'data_misc/optionsflow/{symbol}.dat','w') as f:
+                f.write(j)
+
+        else:
+            print('get_options_flow error: invalid file_method')
+            return 0
+            
+get_options_flow(start_date=datetime(2023,6,2),end_date=datetime(2023,9,27),print_option=True)
 
 

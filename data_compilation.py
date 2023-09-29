@@ -24,7 +24,8 @@ alphavantage_key='O7TXW0XZOPYNKC5D'
 #alphavantage_key = 'B71NVO0WITDQFLF4'
 benzinga_key = '4edd94fa08d140a78309628f689b7ada'
 
-proton_path = r"C:\Program Files\Proton\VPN\v3.1.1\ProtonVPN.exe"
+#proton_path = r"C:\Program Files\Proton\VPN\v3.1.1\ProtonVPN.exe"
+proton_path = r"D:\Program Files (x86)\Proton Technologies\ProtonVPN\ProtonVPN.exe"
 
 def change_alphavantage_key(key):
     if key=='1C3O71BAB7HJXTWZ':
@@ -1333,6 +1334,77 @@ def get_options_flow(symbol,start_date=datetime(2016,1,1),end_date=datetime(2023
     return df
 
 
+#appends a single date to all of the options flow data. Make sure to run this daily. If behind, run functions in unusualoptions.py
+def optionsflow_appender(date):
+    current_date = date    
+    current_str = datetime.strftime(current_date,'%Y-%m-%d')
+
+    df_dict = {}
+
+    try:
+        options_df = pd.read_csv(f'data_misc/optionsflow/Unusual-Stock-Options-Activity-{current_str}.csv')
+    except Exception as e:
+        current_date = current_date + timedelta(days=1)
+        current_str = datetime.strftime(current_date,'%Y-%m-%d')
+        print('options appender error: must download recent file')
+
+    for index,value in options_df.iterrows():
+        try:
+            volOI = float(value['Vol/OI'])
+        except:
+            volOI = float(value['Vol/OI'].replace(',',''))
+        try:
+            iv = float(value['IV'].strip('%'))/100
+        except:
+            iv = str(value['IV']).strip('%')
+            iv = iv.replace(',','')
+            iv = float(iv)
+
+        delta = float(value['Delta'])
+        symbol = value['Symbol']
+
+        if value['Type'] == 'Put':
+            volOI*=-1
+
+        if symbol in df_dict:
+            #print(df_dict)
+            df_dict[symbol]['Date'].append(current_str)
+            df_dict[symbol]['volOI'].append(volOI)
+            df_dict[symbol]['IV'].append(iv)
+            df_dict[symbol]['delta'].append(delta)
+        else:
+            df_dict[symbol] = {'Date':[current_str],'volOI':[volOI],'IV':[iv],'delta':[delta]}
+
+    current_date = current_date + timedelta(days=1)
+    current_str = datetime.strftime(current_date,'%Y-%m-%d')
+
+    for symbol,df in df_dict.items():
+        try:
+            with open(f'data_misc/optionsflow/{symbol}.dat','r') as f:
+                d = f.read()
+            data = pd.read_json(d,convert_axes=True)
+            df = pd.concat([data,df],ignore_index=True)
+            j = data.to_json(orient='records',date_format='iso')
+        except:
+            j = df.to_json(orient='records',date_format='iso')
+
+        with open(f'data_misc/optionsflow/{symbol}.dat','w') as f:
+            f.write(j)
+
+
+
+
+
+def optionsflow_init(symbol:str,start_date=datetime(2016,1,1),end_date=datetime(2023,9,1)):
+    if symbol=='BRK-B':
+        symbol = 'BRK.B'
+    with open(f'data_misc/optionsflow/{symbol}.dat','r') as f:
+        d = f.read()
+    df = pd.read_json(d,convert_axes=True)
+    df = df[['Date','volOI']]
+    df = fn.data_fill(df,damping_columns='all',start_date=start_date,end_date=end_date)
+    return df
+
 
 
 def get_pricetargets(symbol:str,start_date=datetime(2016,1,1),end_date=datetime(2023,6,1),time_interval:int=5,file_method='w'):
@@ -1499,6 +1571,7 @@ def training_data_init(stocks_list,
                    end_date=None,
                    sequences=True,
                    sequence_length=16,
+                   optionsflow=True,
                    target='1d',
                    file_name='TRAINING'):
     
@@ -1542,6 +1615,10 @@ def training_data_init(stocks_list,
         if pricetargets:
             pricetarget_df = pricetargets_init(sym,start_date=start_date,end_date=end_date)
             data_list.append(pricetarget_df)
+
+        if optionsflow:
+            optionsf_df = optionsflow_init(sym,start_date=start_date,end_date=end_date)
+            data_list.append(optionsf_df)
         
         for code in fed_list:
             data_list.append(fed_data[code])
@@ -1563,9 +1640,9 @@ def training_data_init(stocks_list,
         df.set_index('Date',inplace=True)
         if sequences:
             if pricetargets:
-                df = fn.sequencizer(df,sequence_length,ignore_columns=['Close_5d','Target','GradeChange'])
+                df = fn.sequencizer(df,sequence_length,ignore_columns=['Volume','reportedEPS','surprise','sentiment','Close_5d','Target','GradeChange'])
             else:
-                df = fn.sequencizer(df,sequence_length,ignore_columns=['Close_5d'])
+                df = fn.sequencizer(df,sequence_length,ignore_columns=['Volume','reportedEPS','surprise','sentiment','Close_5d'])
 
         if target=='1d' or target=='all': 
             df['Close_Tmr'] = df['Close'].shift(-1)
@@ -1602,6 +1679,7 @@ def eval_data_init(stock:str, #stock symbol
                    insider_data=True,
                    pricetargets = True,
                    sequences = True,
+                   optionsflow=True,
                    sequence_length = 16,
                    end_date = None
                    ): #hist is the number of days of history you want to include in the evaluation tensor
@@ -1707,6 +1785,11 @@ def eval_data_init(stock:str, #stock symbol
         #pricetarget_df = pricetargets_init(symbol=stock,start_date=start_date-timedelta(days=30),end_date=end_date)
         pricetarget_df = pricetargets_init(symbol=stock,start_date=start_date,end_date=end_date)
         df_list.append(pricetarget_df)
+
+    if optionsflow:
+        #optionsflow_appender(end_date)
+        optionsf_df = optionsflow_init(stock,start_date=start_date,end_date=end_date)
+        df_list.append(optionsf_df)
     
     #federal reserve:
     def fed_pth(code):
@@ -1748,7 +1831,7 @@ def eval_data_init(stock:str, #stock symbol
 
     df_merged.set_index('Date',inplace=True)
     if sequences:
-        df_merged = fn.sequencizer(df_merged,sequence_length,ignore_columns=['Target','GradeChange'])    
+        df_merged = fn.sequencizer(df_merged,sequence_length,ignore_columns=['Volume','reportedEPS','surprise','sentiment','Target','GradeChange'])    
 
     date_str = datetime.strftime(end_date,'%Y-%m-%d')
     df_merged.to_csv(f'csv_data/equity/{stock}-{date_str}.csv')
@@ -1768,30 +1851,49 @@ def eval_data_init(stock:str, #stock symbol
 #as of now, seekingalpha_F.dat ends in 2015, so I am leaving ford out of the list
 
 model_stocks = ['AAPL','AAL','AXP','AMD','AMZN','BAC','BANC','BRK-B','UPS','DELL','DIS','INTC','GE','TGT','MCD','MSFT',
-                'NVDA','NFLX','QCOM','ROKU','RUN','SBUX','WMT','GOOG','CSCO','CAT','MMM','PG','WBA','V']
+                'NVDA','NFLX','QCOM','ROKU','RUN','SBUX','WMT','GOOG','CSCO','CAT','MMM','PG','WBA','V','SCHW','PFE']
 
-for stock in model_stocks[2:]:
-    get_barrons_data(stock)
+#for stock in model_stocks[2:]:
+#    get_barrons_data(stock)
 
 sequence_length=5
 
+def get_all_data(symbol,start_date=datetime(2016,1,1),end_date=datetime.now(),marketwatch=True):
+    #get_bloomberg_data(symbol)
+    if marketwatch:
+        get_marketwatch_data(symbol,start_date=start_date,end_date=end_date)
+    news_formatter(symbol,outlets=['marketwatch'],start_date=start_date,end_date=end_date)
+    get_equity_data(symbol,start_date=start_date,end_date=end_date)
+    get_earnings(symbol)
+    get_insider_trading_data(symbol,max_page=50,start_date=start_date,end_date=end_date)
+    get_pricetargets(symbol,start_date=start_date,end_date=end_date)
+    get_retail_sentiment(symbol,start_date=start_date,end_date=end_date)
 
-'''
+start_date=datetime(2016,1,1)
+end_date=datetime.now()
+get_insider_trading_data('DAL',max_page=20,start_date=start_date,end_date=end_date)
+get_pricetargets('DAL',start_date=start_date,end_date=end_date)
+get_retail_sentiment('DAL',start_date=start_date,end_date=end_date)
+
+
+model_stocks = ['MU','EBAY','DAL']
+
+
 training_data_init(model_stocks,
-                   end_date=datetime(2023,6,1),
+                   end_date=datetime(2023,9,1),
                    retail_sentiment=True,
                    google_trend=False,
-                   file_name='TRAINING-9-10-2',
+                   file_name='TEST-9-28',
                    sequence_length=sequence_length,
                    news_prefixes=['news_sentiment'],
                    target='all'
                    )
-'''
+
 
 successful_tickers = []
 failed_tickers = []
 
-end_date=datetime.now()-timedelta(hours=6)
+end_date=datetime.now()-timedelta(hours=8)
 
 ['ADM', 'AGNC', 'AMRS', 'APLD', 'APPH', 'ARR', 'ASXC', 'AUR', 'BKE', 'BLZE', 'C',
   'CGNX', 'CMBM', 'COP', 'CVX', 'ENVX', 'ESRT', 'ETRN', 'EVRI', 'F', 'FCEL', 'FFIE', 
@@ -1818,7 +1920,7 @@ def marketengine():
                 google_trend=False,
                 update_earnings=False,
                 end_date=end_date, #IMPORTANT: delete this if you are running this during market hours or before midnight
-                news_outlets=['marketwatch','bloomberg'],
+                news_outlets=['marketwatch'],
                 sequence_length=sequence_length
             )
             count = 0
