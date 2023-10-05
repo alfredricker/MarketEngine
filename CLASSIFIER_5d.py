@@ -21,10 +21,12 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from pytorch_lightning.loggers import TensorBoardLogger
 from torchmetrics import Accuracy
 
+today = input('Input the training or eval date (ex. 10-01 for October 1st): ')
+
 pl.seed_everything(42) #make results reproducible
 # Load and preprocess your data
 #df = pd.read_csv('DATA_SENTIMENT.csv')
-df = pd.read_csv('csv_data/TRAINING-9-27.csv')
+df = pd.read_csv(f'csv_data/TRAINING-{today}.csv')
 df = df.iloc[:,1:] #remove the unwanted index column
 df.fillna(value=0,inplace=True)
 size = df.shape[1]
@@ -117,7 +119,7 @@ class TimeSeriesDataModule(pl.LightningDataModule):
             #num_workers=10
         )
     
-num_epochs = 25
+num_epochs = 10
 
 data_module = TimeSeriesDataModule(X_train,X_test,Y_train,Y_test,batch_size=batch_size)
 
@@ -199,7 +201,7 @@ model.to(device)
 
 checkpoint_callback = ModelCheckpoint(
     dirpath="CHECKPOINTS",
-    filename="best-checkpoint-9-28.ckpt",
+    filename=f"best-checkpoint-{today}.ckpt",
     save_top_k=1,
     verbose=True,
     monitor="val_loss",
@@ -219,7 +221,7 @@ trainer = pl.Trainer(
 
 def train_model():
     trainer.fit(model,data_module)
-    torch.save(model.state_dict(),'CHECKPOINTS/CLASSIFIER-9-28.ckpt')
+    torch.save(model.state_dict(),f'CHECKPOINTS/CLASSIFIER-{today}.ckpt')
 
     #get the numpy array of the predicted values
     with torch.no_grad():
@@ -255,19 +257,20 @@ def train_model():
     }
 
     df_comparison = pd.DataFrame(data)
-    df_comparison.to_csv('csv_tests/comparison_classifier-9-28.csv')
+    df_comparison.to_csv(f'csv_tests/comparison_classifier-{today}.csv')
 
 
 #train_model()
 #sys.exit()
 
 
-sym_list = ['A', 'AA', 'AAL', 'AAOI', 'AAPL', 'ABBV', 'ABNB', 'ABT', 'ACHR', 'ADBE', 'ADM', 'AES', 'AI', 'AKAM', 'AMAT', 'AMD', 'AMZN', 'APLD', 'AR', 'AVGO', 'AXP', 'BA', 'BAC', 'BANC', 'BAX', 'BMY', 'BOWL', 'BRK-B', 'BSX', 'BX', 'BYND', 'CARR', 'CAT', 'CHPT', 'CMCSA', 'COIN', 'COP', 'CRM', 'CROX', 'CSCO', 'CSX', 'CVNA', 'DAL', 'DELL', 'DIS', 'DISH', 'DOCU', 'DVN', 'EBAY', 'ENVX', 'ET', 'ET', 'ETSY', 'EW', 'EYE', 'FDX', 'FHN', 'FITB', 'FLEX', 'FSLY', 'FSR', 'FUBO', 'GE', 'GM', 'GOOG', 'GPS', 'HAL', 'HBAN', 'HLIT', 'HOOD', 'INTC', 'IONQ', 'IP', 'JBLU', 'JNJ', 'JPM', 'KDP', 'KEY', 'KMI', 'KO', 'KVUE', 
-'LCID', 'LLY', 'LSXMK', 'LUMN', 'LUV', 'LYFT', 'MARA', 'MAT', 'MCD', 'MMM', 'MRVL', 'MSFT', 'MTCH', 'MU', 'NCLH', 'NET', 'NFLX', 'NOG', 'NOV', 'NOVA', 'NVDA', 'NYCB', 'OPCH', 'OPEN', 'OSTK', 'PARA', 'PCG', 'PEP', 'PFE', 'PG', 'PINS', 'PLUG', 'PTEN', 'PWR', 'PYPL', 'QCOM', 'QS', 'RBLX', 'RCL', 'RIOT', 'RKT', 'ROKU', 'RTX', 'RUN', 'SBUX', 'SCHW', 'SHAK', 'SIRI', 'SMPL', 'SNAP', 'SOFI', 'SOUN', 'SPCE', 'SPWR', 'TER', 'TGT', 'TTD', 'TWNK', 'U', 'UBER', 'UPS', 'UPST', 
-'USB', 'V', 'VICI', 'VLO', 'VZ', 'WBA', 'WBD', 'WMT', 'WU', 'XPOF', 'ZM']
+sym_list =['META','F','CGNX','TSLA','GOEV','NOC','AEO','AFRM','AGNC','AMBA','ARR','ATVI','BKE','BKR','C','CDE','FAST',
+                              'CFG','CGC','CHWY','CVS','CVX','DKNG','ESRT','NEE','ETRN','FCEL','FFIE','FTI','HARP','HBI','HL','HPE','HTZ',
+                              'JOBY','LRCX','M','MBLY','MLM','MS','MXL','NHWK','NKE','ORCL','PACW','T','TFC','TXN','UNP','VTRS','WFC','Z',
+                              "WMB", "VZIO", "NLY", "BTU", "VLY", "HST","WKHS", "MAS", "NWL", "SQ", "EQT","INVH", "SNOW", "IBM", "JWN","CUK", "ARCC", "KHC"]
 device = 'cpu'
 
-checkpoint = torch.load('CHECKPOINTS/CLASSIFIER-9-27.ckpt')
+checkpoint = torch.load(f'CHECKPOINTS/CLASSIFIER-{today}.ckpt')
 model.load_state_dict(checkpoint)
 model.to(device)
 #mod = PricePredictor.load_from_checkpoint('CHECKPOINTS/best-checkpoint-9-1.ckpt')
@@ -275,7 +278,7 @@ model.to(device)
 def preprocess_eval_data(pth):
     df = pd.read_csv(pth)
     df = df.iloc[:,1:] #remove the unwanted index column
-    df = df.iloc[-2] #get last row of data
+    df = df.iloc[-1] #get last row of data
     #df.fillna(value=0,inplace=True)
     #size = df.shape[1]
     X = df.to_numpy()
@@ -288,7 +291,7 @@ def preprocess_eval_data(pth):
 
 def preprocess_multiple_eval_data(sym_list):
     def sym_pth(sym):
-        pth = f'csv_data/equity/{sym}-2023-09-28.csv'
+        pth = f'csv_data/equity/{sym}-2023-{today}.csv'
         return pth
     df_list = []
     
@@ -296,7 +299,7 @@ def preprocess_multiple_eval_data(sym_list):
         pth = sym_pth(sym)
 
         data = pd.read_csv(pth)
-        data['Close_5d'] = data['Close'].shift(-5)
+        data['Close_Tmr'] = data['Close'].shift(-1)
         #data = data.drop(index=data.index[-1])
         data = data.dropna()
 
@@ -314,13 +317,30 @@ def preprocess_multiple_eval_data(sym_list):
     Y_tens = torch.tensor(Y,dtype=torch.long)
     return (X_tens,Y_tens)
 
+
+def preprocess_test_data(pth):
+    df = pd.read_csv(pth)
+    df = fn.transform_to_binary(df,'Close_5d')
+    df = df.iloc[:,1:]
+    #df = df[df['Close'] != 0]
+    #df=df.insert(0,'Volume',100000000)
+
+    X = df.drop(columns=['Close_5d','Close_Tmr']).to_numpy()
+    Y = df['Close_5d'].to_numpy()
+    X_trans = scaler_X.transform(X)
+
+    X_tens = torch.tensor(X_trans,dtype=torch.float32)
+    Y_tens = torch.tensor(Y,dtype=torch.long)
+    return (X_tens,Y_tens)
+
+
 # Ensure the model is in evaluation mode
 model.eval()
 
 #trading_dict = {'Ticker':[],'Predicted':[],'PredictedProbs':[]}
 
 def stock_pth(symbol):
-    pth = f'csv_data/equity/{symbol}-2023-09-28.csv'
+    pth = f'csv_data/equity/{symbol}-2023-{today}.csv'
     return pth
 
 trading_dict = {'Ticker':[],'Predicted':[],'PredictedProbs':[]}
@@ -347,11 +367,11 @@ for sym in sym_list:
     trading_dict['PredictedProbs'].append(prob_tuple)
 
 df_eval = pd.DataFrame(trading_dict)
-df_eval.to_csv('csv_data/EVAL-9-28.csv')
+df_eval.to_csv('csv_data/EVAL-10-2.csv')
 '''
 
 
-data = preprocess_multiple_eval_data(sym_list)
+data = preprocess_test_data(f'csv_data/TEST-{today}.csv')
 X_dat = data[0]
 Y_dat = data[1]
 X_dat.to(device)
@@ -371,4 +391,4 @@ file_data = {
         'Predicted-Probs': predicted_prob_tuples
     }
 df_eval = pd.DataFrame(file_data)
-df_eval.to_csv('csv_tests/EVAL-9-27.csv')
+df_eval.to_csv(f'csv_tests/EVALTEST-{today}.csv')

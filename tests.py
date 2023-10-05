@@ -82,8 +82,8 @@ df.to_csv('csv_data/SEC_CODES.csv')
 
 
 import re
-df = pd.read_csv('csv_tests/comparison_classifier-9-28.csv')
-threshold = 0.75
+df = pd.read_csv('csv_tests/EVALTEST-10-3.csv')
+threshold = 0.65
 
 def get_probs(tensor):
     tensor = tensor.strip('()')

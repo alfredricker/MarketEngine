@@ -322,7 +322,7 @@ def equity_formatter(symbol:str='none',df=None,nominal=False,api='yfinance',star
         df = pd.read_json(d)
 
     if api == 'yfinance':
-        df = df[['Date','Adj Close','Volume']]
+        df = df[['Date','Adj Close']] #I took out volume, because its definitely not a good predictor
         df = df.rename(columns={'Adj Close':'Close'})
     elif api=='alphavantage':
         j = json.loads(d)
@@ -331,7 +331,7 @@ def equity_formatter(symbol:str='none',df=None,nominal=False,api='yfinance',star
         df.reset_index(inplace=True) #this line makes it so that the date becomes an accessible column rather than the index
         column_names = ['Date','Open','High','Low','Close','Volume']
         df.columns = column_names #rename the columns
-        df = df[['Date','Close','Volume']] #I just want close for the first trial of this. I will come back and do stuff with high and low data as well
+        df = df[['Date','Close']] #I just want close for the first trial of this. I will come back and do stuff with high and low data as well
     else:
         print("Equity formatter error: supported APIs: yfinance, alphavantage")
 
@@ -480,7 +480,9 @@ def calculate_rsi(symbol: str, period: int = 14,start_date=None,end_date=None):
         rs = avg_gain / avg_loss
         return rs
     
-    equity_df = equity_formatter(symbol, nominal=True).drop(columns=['Volume'])
+    equity_df = equity_formatter(symbol, nominal=True)
+    if 'Volume' in equity_df.columns:
+        equity_df.drop(columns=['Volume'],inplace=True)
     equity_df['Close'] = pd.to_numeric(equity_df['Close'], errors='coerce')
     equity_df.dropna(subset=['Close'], inplace=True)
     
@@ -554,4 +556,20 @@ def sequencizer(df, n_steps,ignore_columns=[]):
             df.insert(insert_index, new_col_name, df[column].shift(i))
 
     df.dropna(inplace=True)
+    return df
+
+
+def close_5d_init(symbol:str,start_date=None,end_date=None):
+    with open(f'data_equity/{symbol}.dat','r') as f:
+        r = f.read()
+    close_dat = pd.read_json(r,convert_axes=True)
+    #close_dat.loc[:,'Date'] = pd.to_datetime(close_dat['Date'])
+    close_dat.sort_values(by='Date')
+
+    close_dat['Close_5d'] = close_dat['Adj Close'].shift(-5)
+    close_dat['Close_5d'] = (close_dat['Close_5d']-close_dat['Adj Close'])/close_dat['Adj Close']
+    close_dat=close_dat[['Date','Close_5d']]
+    close_dat=close_dat.iloc[:-5]
+    df = data_fill(close_dat,start_date=start_date,end_date=end_date)
+
     return df

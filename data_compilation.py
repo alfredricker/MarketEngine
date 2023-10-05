@@ -24,8 +24,8 @@ alphavantage_key='O7TXW0XZOPYNKC5D'
 #alphavantage_key = 'B71NVO0WITDQFLF4'
 benzinga_key = '4edd94fa08d140a78309628f689b7ada'
 
-#proton_path = r"C:\Program Files\Proton\VPN\v3.1.1\ProtonVPN.exe"
-proton_path = r"D:\Program Files (x86)\Proton Technologies\ProtonVPN\ProtonVPN.exe"
+proton_path = r"C:\Program Files\Proton\VPN\v3.1.1\ProtonVPN.exe"
+#proton_path = r"D:\Program Files (x86)\Proton Technologies\ProtonVPN\ProtonVPN.exe"
 
 def change_alphavantage_key(key):
     if key=='1C3O71BAB7HJXTWZ':
@@ -120,14 +120,19 @@ def get_equity_data(symbol:str,start_date=datetime(2000,1,1),end_date=datetime(2
 
         elif data_method=='history':
             ticker = yf.Ticker(symbol)
-            data = ticker.history(period='1mo')
-            df = pd.DataFrame(data)
-            df.insert(loc=4,column='Adj Close',value=df['Close'])
-            df.drop(columns=['Dividends', 'Stock Splits'],inplace=True)
-            df.reset_index(inplace=True)
-            df['Date'] = df['Date'].astype(str)
-            df['Date'] = df['Date'].apply(lambda x: x[:10])
-            df.loc[:,'Date'] = pd.to_datetime(df['Date'])
+            try:
+                data = ticker.history(period='1mo')
+                df = pd.DataFrame(data)
+                df.insert(loc=4,column='Adj Close',value=df['Close'])
+                df.drop(columns=['Dividends', 'Stock Splits'],inplace=True)
+                df.reset_index(inplace=True)
+                df['Date'] = df['Date'].astype(str)
+                df['Date'] = df['Date'].apply(lambda x: x[:10])
+                df.loc[:,'Date'] = pd.to_datetime(df['Date'])
+            except:
+                data = yf.download(symbol,start=start_date,end=end_date)
+                df = pd.DataFrame(data)
+                df.reset_index(inplace=True)
 
         else:
             print('Invalid data method')
@@ -312,6 +317,8 @@ def earnings_init(symbol:str='none',df=None,start_date=None,end_date=None):
             data.drop(index=index,inplace=True)
         elif data.loc[index,'surprise']=='None':
             data.loc[index,'surprise'] = 0
+    
+    data.iloc[:, 1:] = data.iloc[:, 1:].astype(float)
 
     dframe = fn.data_fill(data,damping_columns=['surprise'],damping_constant=0.6,start_date=start_date,end_date=end_date)
     return dframe
@@ -400,7 +407,7 @@ def get_bloomberg_data(symbol,max_page:int=50,start_date=None,end_date=None,file
         'authority': 'www.bloomberg.com',
         'accept': '*/*',
         'accept-language': 'en-US,en;q=0.9',
-        'cookie': '_gcl_au=1.1.1258867486.1687890016; _pxvid=43f2ef4b-1517-11ee-9c98-4d76c2da6132; _rdt_uuid=1687890040318.60c499b1-45fd-4a4e-8f20-2f74cd36be33; professional-cookieConsent=new-relic|perimeterx-bot-detection|perimeterx-pixel|google-tag-manager|google-analytics|microsoft-advertising|eloqua|adwords|linkedin-insights; drift_aid=50f77712-c0e7-4dca-be00-1a3be2328a99; driftt_aid=50f77712-c0e7-4dca-be00-1a3be2328a99; _ga_NNP7N7T2TG=GS1.1.1690421511.1.1.1690421544.27.0.0; optimizelyEndUserId=oeu1691579311263r0.14078048370792384; _sp_v1_data=585912; _sp_su=false; _gid=GA1.2.899983733.1691579312; ccpaUUID=8ddf4e4d-c0f6-4360-a8b8-a8380fef7366; dnsDisplayed=true; ccpaApplies=true; signedLspa=false; bbgconsentstring=req1fun1pad1; _gcl_aw=GCL.1691579312.CjwKCAjw8symBhAqEiwAaTA__DO-uluShYNXs3DHq9qThKK2LjCpEYvmtIQC0s2nkstqwB9aO3_W5xoCYs8QAvD_BwE; _gcl_dc=GCL.1691579312.CjwKCAjw8symBhAqEiwAaTA__DO-uluShYNXs3DHq9qThKK2LjCpEYvmtIQC0s2nkstqwB9aO3_W5xoCYs8QAvD_BwE; bdfpc=004.7462060169.1691579312202; _reg-csrf=s%3AlyBG8tgXEI9gNgMwydkfiRDm.RlyuzWcn50CU7nh9OqEZ95DENiWW7I6ne4qIka7hhS8; pxcts=139f8f51-36a5-11ee-ab90-6964554c7146; _scid=150ea57a-2797-4865-a5c9-ae5f03bd0f1b; _fbp=fb.1.1691579312789.341111564; agent_id=5b10caf2-1327-404d-bdd9-a996d347e790; session_id=020044b7-d1ac-4592-878e-cec443ac6e02; session_key=79b794f0c70c696278e62a0cf85e93415508cbaa; gatehouse_id=9d7077e9-22af-491f-a236-042c63c2a8f0; geo_info=%7B%22countryCode%22%3A%22US%22%2C%22country%22%3A%22US%22%2C%22cityId%22%3A%225368361%22%2C%22provinceId%22%3A%225332921%22%2C%22field_p%22%3A%22E6A909%22%2C%22field_d%22%3A%22rr.com%22%2C%22field_mi%22%3A-1%2C%22field_n%22%3A%22hf%22%2C%22trackingRegion%22%3A%22US%22%2C%22cacheExpiredTime%22%3A1692184112798%2C%22region%22%3A%22US%22%2C%22fieldMI%22%3A-1%2C%22fieldN%22%3A%22hf%22%2C%22fieldD%22%3A%22rr.com%22%2C%22fieldP%22%3A%22E6A909%22%7D%7C1692184112798; _li_dcdm_c=.bloomberg.com; _lc2_fpi=b1166d620485--01h7czqv6gbrbhddx2qjmrg1mb; _gac_UA-11413116-1=1.1691579314.CjwKCAjw8symBhAqEiwAaTA__DO-uluShYNXs3DHq9qThKK2LjCpEYvmtIQC0s2nkstqwB9aO3_W5xoCYs8QAvD_BwE; _sctr=1%7C1691553600000; seen_uk=1; exp_pref=AMER; ln_or=eyI0MDM1OTMiOiJkIn0%3D; _cc_id=cb4452165a13807982d81de51e7402ec; panoramaId=7071f388f239d3ecb953ab1733d316d5393826fd6dfa307fa39b72341051eee0; panoramaIdType=panoIndiv; afUserId=044f5126-bd6b-48c9-b84d-1a6205bfd708-p; AF_SYNC=1691579323016; _sp_v1_p=192; _parsely_session={%22sid%22:4%2C%22surl%22:%22https://www.bloomberg.com/search?query=AAPL&page=3&sort=time:desc%22%2C%22sref%22:%22%22%2C%22sts%22:1691627981370%2C%22slts%22:1691625583270}; _parsely_visitor={%22id%22:%22pid=fb1a7e688db3d4e11dc092a353d07cce%22%2C%22session_count%22:4%2C%22last_session_ts%22:1691627981370}; _sp_v1_ss=1:H4sIAAAAAAAAAItWqo5RKimOUbLKK83J0YlRSkVil4AlqmtrlXQGVlk0kYw8EMOgNhaXkfSQGOiwGnzKYgF_3pWTZQIAAA%3D%3D; _sp_krux=true; euconsent-v2=CPwSZUAPwSZUAAGABCENDPCgAP_AAEPAABpYH9oB9CpGCTFDKGh4AKsAEAQXwBAEAOAAAAABAAAAABgQAIwCAEASAACAAAACGAAAIAIAAAAAEAAAAEAAQAAAAAFAAAAEAAAAIAAAAAAAAAAAAAAAAIEAAAAAAUAAEFAAgEAAABIAQAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgYtAOAAcAD8ARwA7gCBwEHAQgAiIBFgC6gGvAWUAvMBggDFgDwkBcABYAFQAMgAcABAADIAGgARAAjgBMACeAH4AQgAjgBSgDKgHcAd4A9gCTAEpAOIAuQBkgQAGARwAnYCmw0AEBcgYACApsRABAXIKgAgLkGQAQFyDoDQACwAKgAZAA4ACAAFwAMgAaABEACOAEwAJ4AXQAxAB-AFGAKUAZQA7wB7AEmAJSAcQA6gC5AGSDgAoAFwBHAEcAJ2ApshANAAWABkAFwATAAxACOAFKAMqAdwB3gEpAOoAsoBchAACARwlAMAAWABkADgARAAjgBMADEAI4AUYA7wDqAMkJAAgALgEcKQFAAFgAVAAyABwAEAANAAiABHACYAE8AMQAfgBRgClAGUAO8AlIB1AFyAMkKABAALgAyAIOAps.YAAAAAAAAAAA; consentUUID=87aa1011-a199-4670-9bfa-e8a090dc0452_22; country_code=US; _reg-csrf-token=qtPaStnF-joAKNZrqCPnkMRvrKeSRd3V9FQQ; _user-data=%7B%22status%22%3A%22anonymous%22%7D; _last-refresh=2023-8-10%201%3A2; _scid_r=150ea57a-2797-4865-a5c9-ae5f03bd0f1b; __sppvid=43fc3cd7-9fee-4242-ad89-772dd26f0988; _uetsid=13d2691036a511ee9072e745523f4a97; _uetvid=524378e0151711eeb02ba54b6db7a142; _px3=006a2178000e88b5a8383e394d20abe4dec20fe6b83fec951bb5462fd849eb60:FwQbebtd0GCPQQcjQh6Az/v7P3oymeKuiyEhxRdWi+jkaqslxMxMp6XHIFTbdnbVR18c+tpQWFgGzXZeME4ARw==:1000:6mHvOZ7bghHs9Vwo3KeoDBalw4QnYCNkRQ86Wex8kkb/kSAhQS7Ez3WTj+2sp8oIfTypK/JaqIz6uRQ0XEV+riKpp5m6hFvxfiXPlKY2/RUzrecx5lF5mVDetdpb2t+MFvJp7X7XZTaxejFyjHlzxShVPX0Rec9UipbH7A9OdQVnff7EbL7t+6oJc2BXDTPSHOLsISghRszRcWl9R/9eNQ==; _px2=eyJ1IjoiOTY0ZTJkODAtMzcxOS0xMWVlLWJlYTUtYmZhODc3YWIwYmY4IiwidiI6IjQzZjJlZjRiLTE1MTctMTFlZS05Yzk4LTRkNzZjMmRhNjEzMiIsInQiOjE2OTE2Mjk2NTM4NTQsImgiOiIxYWU0NTYwNWNhOWU0OWRlMGM3NmQyZWYyN2Y2ZTlmNjA0NzE3ZWQ2NDdmMGRiMTIwMGY3ZDAyYjFkOWQ2Y2IyIn0=; panoramaId_expiry=1692234153858; __gads=ID=76572d94ef31506c:T=1691579321:RT=1691629354:S=ALNI_MYlt1TkN2cOqMPx-hpXB8MARppYBQ; __gpi=UID=000009b26c3c0a8a:T=1691579321:RT=1691629354:S=ALNI_MbuI-GU0H0AoY52S8l18G7ro2rJQA; _ga=GA1.2.1454142836.1687890016; _pxde=fc60b9dadff19404c07f24b80fdb9b6d6a574085838e971e8f4b42cf3d6b5154:eyJ0aW1lc3RhbXAiOjE2OTE2Mjk0ODc5NjgsImZfa2IiOjAsImlwY19pZCI6W119; _gat_UA-11413116-1=1; _ga_GQ1PBLXZCT=GS1.1.1691627960.4.1.1691629514.56.0.0; exp_pref=AMER; country_code=US',
+        #'cookie': '_gcl_au=1.1.1258867486.1687890016; _pxvid=43f2ef4b-1517-11ee-9c98-4d76c2da6132; _rdt_uuid=1687890040318.60c499b1-45fd-4a4e-8f20-2f74cd36be33; professional-cookieConsent=new-relic|perimeterx-bot-detection|perimeterx-pixel|google-tag-manager|google-analytics|microsoft-advertising|eloqua|adwords|linkedin-insights; drift_aid=50f77712-c0e7-4dca-be00-1a3be2328a99; driftt_aid=50f77712-c0e7-4dca-be00-1a3be2328a99; _ga_NNP7N7T2TG=GS1.1.1690421511.1.1.1690421544.27.0.0; optimizelyEndUserId=oeu1691579311263r0.14078048370792384; _sp_v1_data=585912; _sp_su=false; _gid=GA1.2.899983733.1691579312; ccpaUUID=8ddf4e4d-c0f6-4360-a8b8-a8380fef7366; dnsDisplayed=true; ccpaApplies=true; signedLspa=false; bbgconsentstring=req1fun1pad1; _gcl_aw=GCL.1691579312.CjwKCAjw8symBhAqEiwAaTA__DO-uluShYNXs3DHq9qThKK2LjCpEYvmtIQC0s2nkstqwB9aO3_W5xoCYs8QAvD_BwE; _gcl_dc=GCL.1691579312.CjwKCAjw8symBhAqEiwAaTA__DO-uluShYNXs3DHq9qThKK2LjCpEYvmtIQC0s2nkstqwB9aO3_W5xoCYs8QAvD_BwE; bdfpc=004.7462060169.1691579312202; _reg-csrf=s%3AlyBG8tgXEI9gNgMwydkfiRDm.RlyuzWcn50CU7nh9OqEZ95DENiWW7I6ne4qIka7hhS8; pxcts=139f8f51-36a5-11ee-ab90-6964554c7146; _scid=150ea57a-2797-4865-a5c9-ae5f03bd0f1b; _fbp=fb.1.1691579312789.341111564; agent_id=5b10caf2-1327-404d-bdd9-a996d347e790; session_id=020044b7-d1ac-4592-878e-cec443ac6e02; session_key=79b794f0c70c696278e62a0cf85e93415508cbaa; gatehouse_id=9d7077e9-22af-491f-a236-042c63c2a8f0; geo_info=%7B%22countryCode%22%3A%22US%22%2C%22country%22%3A%22US%22%2C%22cityId%22%3A%225368361%22%2C%22provinceId%22%3A%225332921%22%2C%22field_p%22%3A%22E6A909%22%2C%22field_d%22%3A%22rr.com%22%2C%22field_mi%22%3A-1%2C%22field_n%22%3A%22hf%22%2C%22trackingRegion%22%3A%22US%22%2C%22cacheExpiredTime%22%3A1692184112798%2C%22region%22%3A%22US%22%2C%22fieldMI%22%3A-1%2C%22fieldN%22%3A%22hf%22%2C%22fieldD%22%3A%22rr.com%22%2C%22fieldP%22%3A%22E6A909%22%7D%7C1692184112798; _li_dcdm_c=.bloomberg.com; _lc2_fpi=b1166d620485--01h7czqv6gbrbhddx2qjmrg1mb; _gac_UA-11413116-1=1.1691579314.CjwKCAjw8symBhAqEiwAaTA__DO-uluShYNXs3DHq9qThKK2LjCpEYvmtIQC0s2nkstqwB9aO3_W5xoCYs8QAvD_BwE; _sctr=1%7C1691553600000; seen_uk=1; exp_pref=AMER; ln_or=eyI0MDM1OTMiOiJkIn0%3D; _cc_id=cb4452165a13807982d81de51e7402ec; panoramaId=7071f388f239d3ecb953ab1733d316d5393826fd6dfa307fa39b72341051eee0; panoramaIdType=panoIndiv; afUserId=044f5126-bd6b-48c9-b84d-1a6205bfd708-p; AF_SYNC=1691579323016; _sp_v1_p=192; _parsely_session={%22sid%22:4%2C%22surl%22:%22https://www.bloomberg.com/search?query=AAPL&page=3&sort=time:desc%22%2C%22sref%22:%22%22%2C%22sts%22:1691627981370%2C%22slts%22:1691625583270}; _parsely_visitor={%22id%22:%22pid=fb1a7e688db3d4e11dc092a353d07cce%22%2C%22session_count%22:4%2C%22last_session_ts%22:1691627981370}; _sp_v1_ss=1:H4sIAAAAAAAAAItWqo5RKimOUbLKK83J0YlRSkVil4AlqmtrlXQGVlk0kYw8EMOgNhaXkfSQGOiwGnzKYgF_3pWTZQIAAA%3D%3D; _sp_krux=true; euconsent-v2=CPwSZUAPwSZUAAGABCENDPCgAP_AAEPAABpYH9oB9CpGCTFDKGh4AKsAEAQXwBAEAOAAAAABAAAAABgQAIwCAEASAACAAAACGAAAIAIAAAAAEAAAAEAAQAAAAAFAAAAEAAAAIAAAAAAAAAAAAAAAAIEAAAAAAUAAEFAAgEAAABIAQAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgYtAOAAcAD8ARwA7gCBwEHAQgAiIBFgC6gGvAWUAvMBggDFgDwkBcABYAFQAMgAcABAADIAGgARAAjgBMACeAH4AQgAjgBSgDKgHcAd4A9gCTAEpAOIAuQBkgQAGARwAnYCmw0AEBcgYACApsRABAXIKgAgLkGQAQFyDoDQACwAKgAZAA4ACAAFwAMgAaABEACOAEwAJ4AXQAxAB-AFGAKUAZQA7wB7AEmAJSAcQA6gC5AGSDgAoAFwBHAEcAJ2ApshANAAWABkAFwATAAxACOAFKAMqAdwB3gEpAOoAsoBchAACARwlAMAAWABkADgARAAjgBMADEAI4AUYA7wDqAMkJAAgALgEcKQFAAFgAVAAyABwAEAANAAiABHACYAE8AMQAfgBRgClAGUAO8AlIB1AFyAMkKABAALgAyAIOAps.YAAAAAAAAAAA; consentUUID=87aa1011-a199-4670-9bfa-e8a090dc0452_22; country_code=US; _reg-csrf-token=qtPaStnF-joAKNZrqCPnkMRvrKeSRd3V9FQQ; _user-data=%7B%22status%22%3A%22anonymous%22%7D; _last-refresh=2023-8-10%201%3A2; _scid_r=150ea57a-2797-4865-a5c9-ae5f03bd0f1b; __sppvid=43fc3cd7-9fee-4242-ad89-772dd26f0988; _uetsid=13d2691036a511ee9072e745523f4a97; _uetvid=524378e0151711eeb02ba54b6db7a142; _px3=006a2178000e88b5a8383e394d20abe4dec20fe6b83fec951bb5462fd849eb60:FwQbebtd0GCPQQcjQh6Az/v7P3oymeKuiyEhxRdWi+jkaqslxMxMp6XHIFTbdnbVR18c+tpQWFgGzXZeME4ARw==:1000:6mHvOZ7bghHs9Vwo3KeoDBalw4QnYCNkRQ86Wex8kkb/kSAhQS7Ez3WTj+2sp8oIfTypK/JaqIz6uRQ0XEV+riKpp5m6hFvxfiXPlKY2/RUzrecx5lF5mVDetdpb2t+MFvJp7X7XZTaxejFyjHlzxShVPX0Rec9UipbH7A9OdQVnff7EbL7t+6oJc2BXDTPSHOLsISghRszRcWl9R/9eNQ==; _px2=eyJ1IjoiOTY0ZTJkODAtMzcxOS0xMWVlLWJlYTUtYmZhODc3YWIwYmY4IiwidiI6IjQzZjJlZjRiLTE1MTctMTFlZS05Yzk4LTRkNzZjMmRhNjEzMiIsInQiOjE2OTE2Mjk2NTM4NTQsImgiOiIxYWU0NTYwNWNhOWU0OWRlMGM3NmQyZWYyN2Y2ZTlmNjA0NzE3ZWQ2NDdmMGRiMTIwMGY3ZDAyYjFkOWQ2Y2IyIn0=; panoramaId_expiry=1692234153858; __gads=ID=76572d94ef31506c:T=1691579321:RT=1691629354:S=ALNI_MYlt1TkN2cOqMPx-hpXB8MARppYBQ; __gpi=UID=000009b26c3c0a8a:T=1691579321:RT=1691629354:S=ALNI_MbuI-GU0H0AoY52S8l18G7ro2rJQA; _ga=GA1.2.1454142836.1687890016; _pxde=fc60b9dadff19404c07f24b80fdb9b6d6a574085838e971e8f4b42cf3d6b5154:eyJ0aW1lc3RhbXAiOjE2OTE2Mjk0ODc5NjgsImZfa2IiOjAsImlwY19pZCI6W119; _gat_UA-11413116-1=1; _ga_GQ1PBLXZCT=GS1.1.1691627960.4.1.1691629514.56.0.0; exp_pref=AMER; country_code=US',
         'newrelic': 'eyJ2IjpbMCwxXSwiZCI6eyJ0eSI6IkJyb3dzZXIiLCJhYyI6IjE5ODI2OTciLCJhcCI6IjE0MDk1Mjc5OCIsImlkIjoiYjI3ODk2YWU0ZDNiNGRiYSIsInRyIjoiNGQ3MjY1MmZiMjRmNDUxNzNjZTIwOTY3ZTFkNjZkZDAiLCJ0aSI6MTY5MTYyOTUxNDUxNywidGsiOiIyNTMwMCJ9fQ==',
         'referer': f'https://www.bloomberg.com/search?query={symbol}&page={page}',
         'sec-ch-ua': '"Not/A)Brand";v="99", "Google Chrome";v="115", "Chromium";v="115"',
@@ -417,7 +424,8 @@ def get_bloomberg_data(symbol,max_page:int=50,start_date=None,end_date=None,file
             response = requests.request("GET", url, headers=headers, data=payload)
             j = response.json()
         except:
-            time.sleep(5)
+            #time.sleep(5)
+            print('bloomberg except block ran')
             continue
         try:
             for result in j["results"]:
@@ -893,7 +901,10 @@ def news_formatter(symbol,
                    file_prefix='news_sentiment'):
     df_list = []
     for outlet in outlets:
-        df_list.append(news_roberta(symbol,outlet,start_date=start_date,end_date=end_date))
+        try:
+            df_list.append(news_roberta(symbol,outlet,start_date=start_date,end_date=end_date))
+        except:
+            print(f'could not format {symbol} {outlet} data')
 
     if len(df_list)>1:
         '''
@@ -1208,7 +1219,7 @@ def get_insider_trading_data(symbol:str,max_page:int=6,start_date=datetime(2005,
 
     
     df = pd.DataFrame(df)
-    df.loc[:,'Date'] = pd.to_datetime(df['Date'])
+    df["Date"] = pd.to_datetime(df["Date"], format="%Y-%m-%d", errors="coerce")
     df.sort_values(by='Date')
 
     #start_date = pd.to_datetime(datetime.strftime(start_date,'%Y-%m-%d'))
@@ -1408,7 +1419,6 @@ def optionsflow_init(symbol:str,start_date=datetime(2016,1,1),end_date=datetime(
 
 
 def get_pricetargets(symbol:str,start_date=datetime(2016,1,1),end_date=datetime(2023,6,1),time_interval:int=5,file_method='w'):
-
     if start_date is not None:
         current_date = start_date
         next_date = current_date + timedelta(days=time_interval)
@@ -1530,7 +1540,14 @@ def get_pricetargets(symbol:str,start_date=datetime(2016,1,1),end_date=datetime(
 
 
     df = pd.DataFrame(target_dat)
+    if len(df) == 0:
+        if start_date is None:
+            start_date = datetime(2016,1,1)
+        #if the pricetarget function fails to get data, fill it with blank data
+        df = pd.DataFrame({'Date':[start_date],'Target':[0],'GradeChange':[0]})
+
     j = df.to_json(orient='records',date_format='iso')
+
     if file_method is not None:
         with open(f'data_misc/pricetargets/{symbol}.dat',file_method) as file:
             file.write(j)
@@ -1546,6 +1563,13 @@ def pricetargets_init(symbol:str='none',df=None,start_date=None,end_date=None):
         data = pd.read_json(r)
     else:
         data = df
+    
+    if len(data) == 0:
+        if start_date is None:
+            start_date = datetime(2016,1,1)
+        #if the pricetarget function fails to get data, fill it with blank data
+        data = pd.DataFrame({'Date':[start_date],'Target':[0],'GradeChange':[0]})
+
     dataframe = fn.data_fill(data,start_date=start_date,end_date=end_date)
     return dataframe
 
@@ -1607,6 +1631,7 @@ def training_data_init(stocks_list,
         if insider_data:
             insider = insider_init(sym,start_date=start_date,end_date=end_date)
             data_list.append(insider)
+            print(insider)
 
         if retail_sentiment:
             retail_df = fn.retail_sentiment_formatter(sym,start_date=start_date,end_date=end_date)
@@ -1619,6 +1644,7 @@ def training_data_init(stocks_list,
         if optionsflow:
             optionsf_df = optionsflow_init(sym,start_date=start_date,end_date=end_date)
             data_list.append(optionsf_df)
+            print(optionsf_df)
         
         for code in fed_list:
             data_list.append(fed_data[code])
@@ -1639,11 +1665,13 @@ def training_data_init(stocks_list,
         df = df.fillna(0)
         df.set_index('Date',inplace=True)
         if sequences:
+            '''
             if pricetargets:
-                df = fn.sequencizer(df,sequence_length,ignore_columns=['Volume','reportedEPS','surprise','sentiment','Close_5d','Target','GradeChange'])
+                df = fn.sequencizer(df,sequence_length,ignore_columns=['reportedEPS','surprise','sentiment','Close_5d','Target','GradeChange'])
             else:
-                df = fn.sequencizer(df,sequence_length,ignore_columns=['Volume','reportedEPS','surprise','sentiment','Close_5d'])
-
+                df = fn.sequencizer(df,sequence_length,ignore_columns=['reportedEPS','surprise','sentiment','Close_5d'])
+            '''
+            df = fn.sequencizer(df,sequence_length,ignore_columns=['Close','Close_5d'])
         if target=='1d' or target=='all': 
             df['Close_Tmr'] = df['Close'].shift(-1)
             df = df.drop(index=df.index[-1]) #drop the last row because the above shift method will result in NaN values
@@ -1717,7 +1745,7 @@ def eval_data_init(stock:str, #stock symbol
         if not update_earnings:
             file_path = os.path.join(os.getcwd(), earnings_pth)
             if not os.path.exists(file_path):
-                earnings_df = data_appender(earnings_pth,get_earnings,stock,start_date=start_date,end_date=end_date,concat=True,overwrite=True)
+                get_earnings(stock)
         else:
             earnings_df = data_appender(earnings_pth,get_earnings,stock,start_date=start_date,end_date=end_date,concat=True,overwrite=True)
 
@@ -1745,9 +1773,15 @@ def eval_data_init(stock:str, #stock symbol
             if outlet == 'seekingalpha':
                 data_appender(pth,get_seekingalpha_analysis,stock,start_date=start_date,end_date=end_date,concat=True,overwrite=True)
             elif outlet == 'bloomberg':
-                data_appender(pth,get_bloomberg_data,stock,start_date=start_date,end_date=end_date,concat=True,overwrite=True)
+                try:
+                    data_appender(pth,get_bloomberg_data,stock,start_date=start_date,end_date=end_date,concat=True,overwrite=True)
+                except:
+                    print(f'could not get {stock} bloomberg data')
             elif outlet == 'marketwatch':
-                data_appender(pth,get_marketwatch_data,stock,start_date=start_date,end_date=end_date,concat=True,overwrite=True)
+                try:
+                    data_appender(pth,get_marketwatch_data,stock,start_date=start_date,end_date=end_date,concat=True,overwrite=True)
+                except:
+                    print(f'could not get {stock} marketwatch data')
 
         news_sentiment_df = news_formatter(stock,outlets=news_outlets,start_date=start_date,end_date=end_date,file_method=None)
         #news_sentiment_df.drop(index=0,inplace=True)
@@ -1765,8 +1799,11 @@ def eval_data_init(stock:str, #stock symbol
 
     if insider_data:
         indsider_pth = f'data_misc/insider_{stock}.dat'
-        #insider_df = data_appender(indsider_pth,get_insider_trading_data,stock,start_date=start_date-timedelta(days=30),end_date=end_date)
-        insider_df = data_appender(indsider_pth,get_insider_trading_data,stock,start_date=start_date,end_date=end_date)
+        try:
+            insider_df = data_appender(indsider_pth,get_insider_trading_data,stock,start_date=start_date,end_date=end_date)
+        except:
+            get_insider_trading_data(stock,end_date=datetime.now())
+            insider_df = data_appender(indsider_pth,get_insider_trading_data,stock,start_date=start_date,end_date=end_date)
         insider_df = insider_init(symbol=stock,start_date=start_date,end_date=end_date)
         df_list.append(insider_df)
         #print(insider_df)
@@ -1780,8 +1817,11 @@ def eval_data_init(stock:str, #stock symbol
 
     if pricetargets:
         pricetarget_pth = f'data_misc/pricetargets/{stock}.dat'
-        #pricetarget_df = data_appender(pricetarget_pth,get_pricetargets,stock,start_date=start_date-timedelta(days=30),end_date=end_date,concat=True,overwrite=True)
-        pricetarget_df = data_appender(pricetarget_pth,get_pricetargets,stock,start_date=start_date,end_date=end_date)
+        try:
+            pricetarget_df = data_appender(pricetarget_pth,get_pricetargets,stock,start_date=start_date,end_date=end_date)
+        except:
+            get_pricetargets(stock,start_date=datetime(2021,1,1),end_date=datetime.now())
+            pricetarget_df = data_appender(pricetarget_pth,get_pricetargets,stock,start_date=start_date,end_date=end_date)
         #pricetarget_df = pricetargets_init(symbol=stock,start_date=start_date-timedelta(days=30),end_date=end_date)
         pricetarget_df = pricetargets_init(symbol=stock,start_date=start_date,end_date=end_date)
         df_list.append(pricetarget_df)
@@ -1831,7 +1871,7 @@ def eval_data_init(stock:str, #stock symbol
 
     df_merged.set_index('Date',inplace=True)
     if sequences:
-        df_merged = fn.sequencizer(df_merged,sequence_length,ignore_columns=['Volume','reportedEPS','surprise','sentiment','Target','GradeChange'])    
+        df_merged = fn.sequencizer(df_merged,sequence_length,ignore_columns=['reportedEPS','surprise','sentiment','Target','GradeChange'])    
 
     date_str = datetime.strftime(end_date,'%Y-%m-%d')
     df_merged.to_csv(f'csv_data/equity/{stock}-{date_str}.csv')
@@ -1850,42 +1890,43 @@ def eval_data_init(stock:str, #stock symbol
 #equity_init(model_stocks,model_companies)
 #as of now, seekingalpha_F.dat ends in 2015, so I am leaving ford out of the list
 
-model_stocks = ['AAPL','AAL','AXP','AMD','AMZN','BAC','BANC','BRK-B','UPS','DELL','DIS','INTC','GE','TGT','MCD','MSFT',
-                'NVDA','NFLX','QCOM','ROKU','RUN','SBUX','WMT','GOOG','CSCO','CAT','MMM','PG','WBA','V','SCHW','PFE']
+model_stocks = ['IBM','PEP','JWN','CVS','MU','CRM','LLY','UNH','GS','CAT','HD','CVX','NKE','KO','MA','MRK','AAPL','AAL','F','T','AXP','AMD',
+                'BAC','BANC','UPS','DELL','DIS','INTC','GE','TGT','MCD','MSFT','NVDA','NFLX','QCOM','ROKU','RUN','SBUX','WMT',
+                'GOOG','CSCO','CAT','MMM','PG','WBA','V','PFE','BRK-B','AMZN']
 
 #for stock in model_stocks[2:]:
 #    get_barrons_data(stock)
 
-sequence_length=5
+sequence_length=7
 
-def get_all_data(symbol,start_date=datetime(2016,1,1),end_date=datetime.now(),marketwatch=True):
+def get_all_data(symbol,start_date=datetime(2016,1,1),end_date=datetime.now(),marketwatch=True,bloomberg=True):
     #get_bloomberg_data(symbol)
     if marketwatch:
         get_marketwatch_data(symbol,start_date=start_date,end_date=end_date)
-    news_formatter(symbol,outlets=['marketwatch'],start_date=start_date,end_date=end_date)
+    if bloomberg:
+        get_bloomberg_data(symbol)
+    news_formatter(symbol,outlets=['bloomberg','marketwatch'],start_date=start_date,end_date=end_date)
     get_equity_data(symbol,start_date=start_date,end_date=end_date)
     get_earnings(symbol)
     get_insider_trading_data(symbol,max_page=50,start_date=start_date,end_date=end_date)
     get_pricetargets(symbol,start_date=start_date,end_date=end_date)
     get_retail_sentiment(symbol,start_date=start_date,end_date=end_date)
 
-start_date=datetime(2016,1,1)
-end_date=datetime.now()
-get_insider_trading_data('DAL',max_page=20,start_date=start_date,end_date=end_date)
-get_pricetargets('DAL',start_date=start_date,end_date=end_date)
-get_retail_sentiment('DAL',start_date=start_date,end_date=end_date)
+
+test_tickers = ['NYCB','TRV','EBAY','HTZ','VZ','WBD','SCHW','PYPL','PLUG','KEY','JPM']
 
 
-model_stocks = ['MU','EBAY','DAL']
-
-
-training_data_init(model_stocks,
+training_data_init(test_tickers,
+                   start_date=datetime(2020,5,18),
                    end_date=datetime(2023,9,1),
-                   retail_sentiment=True,
+                   retail_sentiment=False,
                    google_trend=False,
-                   file_name='TEST-9-28',
+                   earnings=False,
+                   rsi=False,
+                   pricetargets=False,
+                   file_name='TEST-10-3',
                    sequence_length=sequence_length,
-                   news_prefixes=['news_sentiment'],
+                   news_prefixes=[],
                    target='all'
                    )
 
@@ -1893,26 +1934,18 @@ training_data_init(model_stocks,
 successful_tickers = []
 failed_tickers = []
 
-end_date=datetime.now()-timedelta(hours=8)
-
-['ADM', 'AGNC', 'AMRS', 'APLD', 'APPH', 'ARR', 'ASXC', 'AUR', 'BKE', 'BLZE', 'C',
-  'CGNX', 'CMBM', 'COP', 'CVX', 'ENVX', 'ESRT', 'ETRN', 'EVRI', 'F', 'FCEL', 'FFIE', 
-  'FTC', 'FTI', 'GOEV', 'HARP', 'HAYW', 'HBI', 'HTZ', 'JD', 'M', 'META', 'MLM', 'MXL', 
-  'NHWK', 'OPCH', 'ORCL', 'PACW', 'PRPL', 'SHOP', 'T', 'TFC', 'TGT', 'TSLA', 'VIRX', 
-  'VTRS', 'WFC', 'WFRD', 'WSC', 'ATVI']
-
-
+end_date=datetime(2023,9,29)
 
 #get_options_flow('AAPL',start_date=datetime(2020,8,1),end_date=datetime(2020,9,1))
 
 
-def marketengine():
+def marketengine(sym_list=sec_data['ticker']):
     failed_tickers = []
     successful_tickers = []
 
     count = 0
 
-    for sym in sec_data['ticker']:
+    for sym in sym_list:
         sym = str(sym)
         try:
             eval_data_init(
@@ -1920,15 +1953,15 @@ def marketengine():
                 google_trend=False,
                 update_earnings=False,
                 end_date=end_date, #IMPORTANT: delete this if you are running this during market hours or before midnight
-                news_outlets=['marketwatch'],
+                news_outlets=['bloomberg','marketwatch'],
                 sequence_length=sequence_length
             )
             count = 0
             successful_tickers.append(sym)
-        except:
-            print(f'Failed to get {sym} data')
+        except Exception as e:
+            print(f'Failed to get {sym} data: {e}')
             failed_tickers.append(sym)
-            count += 1
+            #count += 1
         if count>=5:
             print('FIVE SEQUENTIAL ERRORS, EXITING...')
             break
